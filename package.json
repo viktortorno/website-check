@@ -1,0 +1,24 @@
+{
+  "name": "website-check",
+  "version": "1.0.0",
+  "description": "Prüft eine Website auf DSGVO, IT-Sicherheit, EU AI Act, Barrierefreiheit (BFSG), SEO, GEO (KI-Suche), Performance und Conversion-Psychologie. Claude-Skill + CLI.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "scan": "tsx scripts/scan.ts",
+    "setup": "playwright install chromium",
+    "postinstall": "playwright install chromium"
+  },
+  "dependencies": {
+    "axe-core": "^4.12.1",
+    "playwright": "^1.60.0",
+    "tsx": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=18.18"
+  }
+}
