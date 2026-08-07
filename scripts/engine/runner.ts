@@ -19,6 +19,7 @@ import { runLegalPages } from "./modules/legalpages";
 import { runPrivacy } from "./modules/privacy";
 import { runAiAct } from "./modules/aiact";
 import { runIndexierung } from "./modules/indexierung";
+import { runSchema } from "./modules/schema";
 import { buildScores } from "./scoring";
 import { KONTEXT_UNBEKANNT, kontextSchluessel, wendeGeltungAn } from "./kontext";
 import { erkenneSeitentyp, wendeSeitentypAn } from "./seitentyp";
@@ -80,6 +81,7 @@ export async function runScan(rawUrl: string, kontext: ScanKontext = KONTEXT_UNB
   const accessibilityFindings = runAccessibility(browserResult.axeViolations, browserResult.axeRan);
   const techStackFindings = runTechStack(browserResult.html);
   const privacyFindings = runPrivacy(browserResult.html, browserResult.requestUrls, browserResult.cookies);
+  const schemaFindings = runSchema(browserResult.html);
 
   // Module, die zusätzlich nachladen: GEO (robots/llms/sitemap, Rohabruf,
   // Bot-Proben), legalpages (Impressum + Datenschutz), SEO (Soft-404-Probe,
@@ -106,6 +108,7 @@ export async function runScan(rawUrl: string, kontext: ScanKontext = KONTEXT_UNB
     ...accessibilityFindings,
     ...techStackFindings,
     ...privacyFindings,
+    ...schemaFindings,
     ...aiActFindings,
     ...indexFindings,
   ];
