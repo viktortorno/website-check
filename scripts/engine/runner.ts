@@ -68,7 +68,7 @@ export async function runScan(rawUrl: string): Promise<ScanReport> {
   // Module, die allein auf dem bereits geladenen HTML/den Rohdaten arbeiten.
   const contentFindings = runContent(browserResult.html, browserResult.finalUrl, browserResult.axeRan);
   const psychologyFindings = runPsychology(browserResult.html);
-  const performanceFindings = runPerformance(browserResult.perf);
+  const performanceFindings = runPerformance(browserResult.perf, browserResult.bilder);
   const accessibilityFindings = runAccessibility(browserResult.axeViolations, browserResult.axeRan);
   const techStackFindings = runTechStack(browserResult.html);
   const privacyFindings = runPrivacy(browserResult.html, browserResult.requestUrls, browserResult.cookies);

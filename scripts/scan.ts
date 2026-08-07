@@ -11,6 +11,7 @@
 import { runScan } from "./engine/runner";
 import { CATEGORY_LABELS, CATEGORY_GROUP, GROUP_LABELS } from "./engine/types";
 import type { ScanReport, Status, CategoryGroup, Category } from "./engine/types";
+import { baueFahrplan, AUFWAND_LABEL } from "./engine/effort";
 
 function parseArgs(argv: string[]): { url?: string; json: boolean; all: boolean } {
   let url: string | undefined;
@@ -38,6 +39,21 @@ function renderText(report: ScanReport, showAll: boolean): string {
   out.push(`  Gesamt: Note ${report.overallGrade}  (${report.overallScore}/100)`);
   out.push(`  ${issues} Auffälligkeiten · ${(report.durationMs / 1000).toFixed(1)} s`);
   out.push("");
+
+  // Reihenfolge der Arbeit: sortiert nach Wirkung pro Aufwand, nicht nach
+  // Schwere. Die Schwere-Sicht steht ohnehin weiter unten in den Kategorien.
+  const plan = baueFahrplan(report, 5);
+  if (plan.schritte.length > 0) {
+    out.push("── SCHNELLSTE GEWINNE ─────────────────────────────────────");
+    out.push("");
+    for (const [i, s] of plan.schritte.entries()) {
+      out.push(`  ${String(i + 1).padStart(2, "0")}. ${s.finding.title}`);
+      out.push(`      ${AUFWAND_LABEL[s.aufwand]} · +${s.punkteKategorie} Punkte bei ${CATEGORY_LABELS[s.finding.category as Category]}`);
+    }
+    out.push("");
+    out.push(`  Zusammen: ${report.overallScore} → ${plan.neuerScore} von 100`);
+    out.push("");
+  }
 
   for (const group of ["compliance", "growth"] as CategoryGroup[]) {
     const cats = report.categories.filter((c) => CATEGORY_GROUP[c.category as Category] === group);

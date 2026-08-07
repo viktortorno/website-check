@@ -51,12 +51,22 @@ export interface MobilMetriken {
   zieleGesamt: number;
 }
 
+// Ein eingebundenes Bild mit dem, was sich nur im Browser feststellen lässt:
+// wie groß die Datei WIRKLICH ist und wie groß sie DARGESTELLT wird.
+export interface BildMass {
+  url: string;
+  natuerlicheBreite: number;  // Pixelbreite der Datei
+  angezeigteBreite: number;   // Pixelbreite im Layout
+  bytes: number;              // übertragene Größe (0 = unbekannt/Cache)
+}
+
 export interface BrowserScanResult {
   findings: Finding[];
   html: string;
   finalUrl: string;
   title: string;
   mobil: MobilMetriken | null;
+  bilder: BildMass[];
   // Roh-Daten, die nachgelagerte Module weiterverwenden:
   requestHosts: string[];
   requestUrls: string[];
@@ -539,6 +549,47 @@ export async function runBrowserScan(url: string): Promise<BrowserScanResult> {
       });
     }
 
+    // --- Bilder: Dateigröße gegen Anzeigegröße ---
+    //
+    // Der häufigste unsichtbare Ladezeit-Killer: ein 4000-px-Foto in einem
+    // 400-px-Container. Im HTML ist das nicht erkennbar — erst der Browser
+    // kennt `naturalWidth` (die Datei) und `clientWidth` (die Darstellung).
+    // Läuft VOR der Umstellung auf Telefonbreite, weil sonst die
+    // Anzeigegrößen des mobilen Layouts gemessen würden.
+    let bilder: BildMass[] = [];
+    try {
+      bilder = await page.evaluate(() => {
+        const g = globalThis as unknown as Record<string, unknown>;
+        if (typeof g.__name !== "function") g.__name = (f: unknown) => f;
+
+        // Übertragene Größen aus dem Resource-Timing, damit die Aussage nicht
+        // nur "zu groß in Pixeln", sondern "so viele Bytes" lautet.
+        const groessen = new Map<string, number>();
+        for (const e of performance.getEntriesByType("resource") as PerformanceResourceTiming[]) {
+          if (e.initiatorType === "img" || /\.(jpe?g|png|webp|avif|gif)(\?|$)/i.test(e.name)) {
+            groessen.set(e.name, e.encodedBodySize || e.transferSize || 0);
+          }
+        }
+
+        const out: { url: string; natuerlicheBreite: number; angezeigteBreite: number; bytes: number }[] = [];
+        for (const img of document.querySelectorAll("img")) {
+          const url = img.currentSrc || img.src;
+          if (!url || url.startsWith("data:")) continue;
+          const angezeigt = Math.round(img.getBoundingClientRect().width);
+          if (angezeigt < 10 || !img.naturalWidth) continue; // unsichtbar oder nicht geladen
+          out.push({
+            url,
+            natuerlicheBreite: img.naturalWidth,
+            angezeigteBreite: angezeigt,
+            bytes: groessen.get(url) || 0,
+          });
+        }
+        return out.slice(0, 40);
+      });
+    } catch (err) {
+      console.warn(`Bild-Messung fehlgeschlagen: ${(err as Error).message}`);
+    }
+
     // --- Mobile Darstellung bei 390 px messen ---
     //
     // Läuft ganz am Ende, weil die Viewport-Änderung das Layout umbaut: html,
@@ -619,6 +670,7 @@ export async function runBrowserScan(url: string): Promise<BrowserScanResult> {
       finalUrl,
       title,
       mobil,
+      bilder,
       requestHosts: [...new Set(requestUrls.map((u) => { try { return new URL(u).host; } catch { return ""; } }).filter(Boolean))],
       requestUrls: [...new Set(requestUrls)],
       cookies: cookies.map((c) => ({ name: c.name, domain: c.domain, expires: c.expires })),
@@ -635,7 +687,7 @@ export async function runBrowserScan(url: string): Promise<BrowserScanResult> {
       severity: "info",
       description: `Die Seite konnte nicht vollständig im Browser geladen werden: ${(err as Error).message}`,
     });
-    return { findings, html: "", finalUrl: url, title: "", mobil: null, requestHosts: [], requestUrls: [], cookies: [], perf: null, axeViolations: [], axeRan: false };
+    return { findings, html: "", finalUrl: url, title: "", mobil: null, bilder: [], requestHosts: [], requestUrls: [], cookies: [], perf: null, axeViolations: [], axeRan: false };
   } finally {
     // Chromium IMMER schließen — auch bei Timeout/Abbruch, sonst verwaisen Prozesse.
     if (browser) await browser.close().catch(() => {});

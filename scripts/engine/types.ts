@@ -96,6 +96,14 @@ export interface CategoryResult {
   confidence: number;
 }
 
+// Einordnung gegenüber allen bisher geprüften Seiten. Optional, weil sie erst
+// ab genügend Messungen berechnet wird — und weil ältere gespeicherte Reports
+// sie nicht enthalten.
+export interface ReportVergleich {
+  gesamt: { besserAls: number; grundlage: number } | null;
+  kategorien: Partial<Record<Category, { besserAls: number; grundlage: number }>>;
+}
+
 export interface ScanReport {
   id: string; // eindeutig je Scan — Basis für den teilbaren Permalink /r/<id>
   url: string; // eingegebene URL
@@ -107,6 +115,8 @@ export interface ScanReport {
   categories: CategoryResult[];
   cached?: boolean; // true = Ergebnis kam aus dem Kurz-Cache
   error?: string;
+  // Einordnung im Vergleich zu allen bisher geprüften Seiten (optional).
+  vergleich?: ReportVergleich;
 }
 
 // Fehler, dessen Text dem Nutzer gezeigt werden darf (falsche Eingabe,

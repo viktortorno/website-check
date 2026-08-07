@@ -50,7 +50,7 @@ npx tsx scripts/scan.ts <url> --json
 
 Ein Scan startet kurz Chromium und dauert ~5–20 Sekunden.
 
-## Was geprüft wird (8 Bereiche, rund 67 Prüfpunkte)
+## Was geprüft wird (8 Bereiche, rund 74 Prüfpunkte)
 
 **Rechtssicherheit & Risiko**
 1. **DSGVO** — Tracker und Cookies vor der Einwilligung, Cookie-Laufzeiten über 12 Monate,
@@ -58,7 +58,8 @@ Ein Scan startet kurz Chromium und dauert ~5–20 Sekunden.
    (YouTube, Maps, reCAPTCHA, CDNs, Newsletter), Google Fonts, Formular ohne Datenschutzhinweis,
    Impressum und Datenschutzerklärung inhaltlich auf Pflichtangaben
 2. **IT-Sicherheit** — Security-Header, HTTPS/HSTS, TLS-Zertifikat, Mixed Content, Cookie-Flags,
-   CSP-Qualität, Technologie-Stack (veraltete Libs), Domain-Ablauf (RDAP), SPF/DMARC/DKIM
+   CSP-Qualität, Technologie-Stack (veraltete Libs), Domain-Ablauf (RDAP), SPF/DMARC/DKIM,
+   **SPF-Lookup-Limit** (über 10 macht den Record ungültig), MTA-STS/TLS-RPT, CAA
 3. **EU AI Act** — Herkunftsspuren in Bildern (C2PA/Content Credentials, IPTC
    `trainedAlgorithmicMedia`, Generator-Speicherorte), eingebundene KI-Dienste,
    Biometrie-/Emotionsbibliotheken (Art. 5), Chatbot-Transparenz (Art. 50)
@@ -73,11 +74,14 @@ Ein Scan startet kurz Chromium und dauert ~5–20 Sekunden.
    **serverseitige Bot-Sperren** (Testabruf als GPTBot/PerplexityBot), KI-Crawler-Zugang in der
    robots.txt, llms.txt, Sitemap, Frage-Antwort-Struktur, zitierfähige Absätze, Faktendichte,
    Definitionssätze, Entitäts-Schema mit sameAs, Aktualität, ausgehende Quellen
-7. **Performance** — Core Web Vitals (LCP, CLS, TTFB), Seitengewicht, Requests, DOM-Größe
+7. **Performance** — Core Web Vitals (LCP, CLS, TTFB), Seitengewicht, Requests, DOM-Größe,
+   **Bilder: gelieferte gegen dargestellte Größe** (mit Angabe der unnötigen Megabyte)
 8. **Psychologie / Conversion** — Call-to-Action, Nutzenversprechen, Social Proof,
    Vertrauenssignale, Kontaktwege, Lead-Magnet
 
-Jede Kategorie nennt im Report ihren Geltungsbereich — was sie abdeckt **und was nicht**
+Die Ausgabe beginnt mit **Schnellste Gewinne**: die Befunde sortiert nach Wirkung pro
+Aufwand, mit Zeitschätzung und Punktgewinn — „womit fange ich an?" statt nur „was ist
+kaputt?". Jede Kategorie nennt im Report ihren Geltungsbereich — was sie abdeckt **und was nicht**
 (keine AV-Verträge, keine Rankings, ein Drittel der WCAG-Kriterien, ein Messpunkt).
 
 ## Wie du das Ergebnis aufbereitest
