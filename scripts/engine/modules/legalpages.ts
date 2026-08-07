@@ -11,7 +11,7 @@
 // Redirect-Hop) und nur auf demselben Origin wie die gescannte Seite.
 
 import { Finding } from "../types";
-import { safeFetch } from "../ssrf";
+import { safeFetch, leseBegrenzt } from "../ssrf";
 
 // Kandidaten-Pfade, falls die Startseite gar nicht verlinkt (häufig bei
 // Seiten, die die Rechtsseiten nur im Footer-Script nachladen).
@@ -120,7 +120,7 @@ async function ladeMit(url: string, ua: string): Promise<PageText> {
       headers: { "User-Agent": ua },
     });
     if (!res.ok) return { ok: false, status: res.status, text: "", raw: "", geblockt: ABWEHR.includes(res.status) };
-    const html = (await res.text()).slice(0, 400_000);
+    const html = (await leseBegrenzt(res, 400_000)).text;
     return { ok: true, status: res.status, text: toText(html), raw: rawText(html), geblockt: false };
   } catch {
     return { ok: false, status: 0, text: "", raw: "", geblockt: false };

@@ -9,7 +9,7 @@
 // separater, kostenpflichtiger Datenlieferant.
 
 import { Finding } from "../types";
-import { assertPublicUrl } from "../ssrf";
+import { assertPublicUrl, leseBegrenzt } from "../ssrf";
 import type { MobilMetriken } from "./browser";
 
 // Hilfsfunktion: ersten Match einer Gruppe zurückgeben (oder null).
@@ -34,7 +34,9 @@ async function statusVon(url: string, timeoutMs = 5000): Promise<{ status: numbe
       signal: ctrl.signal,
       headers: { "User-Agent": "ComplianceCheckerBot/1.0 (+https://check.viktortorno.de)" },
     });
-    const text = res.status < 400 ? (await res.text()).slice(0, 100_000) : "";
+    // Im Strom lesen und begrenzen — nicht erst alles annehmen und dann kürzen.
+    const text = res.status < 400 ? (await leseBegrenzt(res, 100_000)).text : "";
+    if (res.status >= 400) await res.body?.cancel().catch(() => {});
     return { status: res.status, location: res.headers.get("location"), text };
   } catch {
     return { status: 0, location: null, text: "" };

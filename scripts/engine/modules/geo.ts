@@ -15,7 +15,7 @@
 // messbar — bewusst ausgeklammert und im Report als Hinweis vermerkt.
 
 import { Finding } from "../types";
-import { safeFetch } from "../ssrf";
+import { safeFetch, leseBegrenzt } from "../ssrf";
 
 // Bekannte KI-/Answer-Engine-Crawler (Stand 2026).
 const AI_BOTS = [
@@ -54,8 +54,15 @@ async function fetchText(
       signal: ctrl.signal,
       headers: { "User-Agent": userAgent },
     });
-    const voll = res.ok ? await res.text() : "";
-    return { ok: res.ok, status: res.status, text: voll.slice(0, maxZeichen), gekappt: voll.length > maxZeichen };
+    if (!res.ok) {
+      await res.body?.cancel().catch(() => {});
+      return { ok: false, status: res.status, text: "", gekappt: false };
+    }
+    // Im Strom lesen und dort abbrechen. maxZeichen ist als Zeichenzahl
+    // gedacht, die Grenze zählt Bytes — bei UTF-8 ist die Bytegrenze immer die
+    // schärfere, also wird nie zu wenig gelesen.
+    const { text, gekappt } = await leseBegrenzt(res, maxZeichen);
+    return { ok: true, status: res.status, text: text.slice(0, maxZeichen), gekappt: gekappt || text.length > maxZeichen };
   } catch {
     return { ok: false, status: 0, text: "", gekappt: false };
   } finally {

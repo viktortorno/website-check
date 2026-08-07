@@ -1,4 +1,4 @@
-# 🛡️ Website-Check
+# Website-Check
 
 Ein **deterministischer** Website-Auditor als [Claude](https://claude.com/claude-code)-Skill **und** CLI.
 Prüft eine beliebige Website per URL in **8 Bereichen** (rund 75 Prüfpunkte) — von rechtlichen Pflichten
@@ -106,6 +106,31 @@ ausgleichen. Ein kritischer Befund deckelt die Note des betroffenen Bereichs.
 einer Punktzahl. Der Exit-Code sagt dasselbe: `0` vollständig, `1` teilweise,
 `2` gescheitert.
 
+**„Nicht anwendbar" ist auch keine Note.** Wer die optionalen Angaben zum
+Betreiber macht, bekommt für Pflichten, die ihn nicht treffen, keine schlechte
+Note, sondern gar keine — mit Begründung. Beispiel: Das BFSG erfasst
+Dienstleistungen an Verbraucher; ein reines B2B-Angebot fällt nicht darunter.
+Die Befunde bleiben trotzdem stehen, dann als Qualitäts- statt Rechtshinweis.
+
+```bash
+npm run scan -- firma-xyz.de --land=de --kunden=b2b --groesse=kleinst --angebot=nur-info
+```
+
+| Flag | Werte | wirkt auf |
+|---|---|---|
+| `--land` | `de`, `eu`, `ausserhalb` | DDG-Zitate, DSGVO, AI Act |
+| `--kunden` | `b2b`, `b2c` | BFSG |
+| `--groesse` | `kleinst`, `ab10` | BFSG (Kleinstunternehmen-Ausnahme) |
+| `--angebot` | `nur-info`, `online-abschluss` | BFSG |
+
+Alle Flags sind freiwillig. Ohne sie wird wie zuvor bewertet — nur mit
+ausgewiesenem Vorbehalt statt einer Feststellung.
+
+**Kalibrierung.** Die Regeln werden gegen Testseiten mit bekannter Wahrheit
+geprüft, mit Schwerpunkt auf der Frage „erzeugt ein korrektes Setup garantiert
+keinen Vorwurf?". Methodik, Ergebnisse und die bekannten Lücken stehen in
+[`KALIBRIERUNG.md`](KALIBRIERUNG.md).
+
 ## Grenzen
 
 - Tracker-/CMP-Listen sind nie vollständig; manche Seiten zeigen Bots eine Consent-Wall.
@@ -113,12 +138,18 @@ einer Punktzahl. Der Exit-Code sagt dasselbe: `0` vollständig, `1` teilweise,
 - Automatisierte WCAG-Tests decken ~30–50 % der Kriterien ab — manuelle Prüfung (Tastatur, Screenreader) bleibt für volle BFSG-Konformität nötig.
 - Domain-Ablaufdatum ist bei `.de`-Domains (DENIC) nicht öffentlich abrufbar.
 - Off-Site-Signale (Backlinks, Marken-Erwähnungen) werden nicht gemessen.
-- **Die rechtliche Anwendbarkeit wird nicht ermittelt.** Geprüft werden technische
-  Signale, keine Rechtslage: Ob das BFSG für einen Betreiber überhaupt gilt (es
-  trifft bestimmte Verbraucherdienste; Kleinstunternehmen sind bei
-  Dienstleistungen ausgenommen), ob eine Seite B2B oder B2C ist und in welchem
-  Land sie betrieben wird, steht dem Werkzeug nicht zur Verfügung. Die Befunde
-  sind Hinweise zum Nachsehen, keine Feststellung eines Verstoßes.
+- **Die rechtliche Anwendbarkeit ist nicht messbar — sie wird erfragt.** Ob das
+  BFSG einen Betreiber trifft, ob er B2B oder B2C anbietet und aus welchem Land
+  er betreibt, steht in keiner Seite. Ohne die optionalen Angaben (siehe
+  „Bewertung") bewertet das Werkzeug nach EU-Maßstab und weist den Vorbehalt
+  aus. Die Befunde bleiben in jedem Fall technische Signale, keine Feststellung
+  eines Verstoßes.
+- **Die Höhe der Strafpunkte ist nicht geeicht.** Dass ein kritischer Befund 40
+  Punkte kostet, ist fachlich begründet, aber nicht gegen einen Datensatz real
+  bewerteter Seiten kalibriert. Siehe `KALIBRIERUNG.md`.
+- **Der Consent-Vorgang wird nicht durchgespielt.** Geprüft wird der Zustand
+  VOR jeder Entscheidung. Ob abgelehnte Tracker trotzdem feuern, misst dieses
+  Werkzeug nicht.
 - Performance ist **ein synthetischer Laborabruf**, kein Feldwert. Die offiziellen
   Core Web Vitals (LCP, INP, CLS) werden am 75. Perzentil echter Besuche
   bewertet; INP lässt sich ohne Interaktion nicht erheben und fehlt hier.

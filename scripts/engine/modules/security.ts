@@ -193,6 +193,10 @@ export async function runSecurity(finalUrl: string): Promise<Finding[]> {
       headers: { "User-Agent": "Mozilla/5.0 ComplianceChecker/1.0" },
     });
     headers = res.headers;
+    // Nur die Header werden gebraucht. Den Body ausdrücklich verwerfen, statt
+    // ihn offen liegen zu lassen — sonst hält eine langsame oder endlose
+    // Antwort die Verbindung, bis der Timeout greift.
+    await res.body?.cancel().catch(() => {});
 
     // Server-Version-Leak
     const server = headers.get("server");

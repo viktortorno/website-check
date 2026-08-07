@@ -9,20 +9,29 @@
 // Gibt bei --json ausschließlich JSON auf stdout aus (maschinenlesbar für Claude).
 
 import { runScan } from "./engine/runner";
+import { parseKontext, kontextAngegeben } from "./engine/kontext";
 import { CATEGORY_LABELS, CATEGORY_SHORT, CATEGORY_GROUP, GROUP_LABELS } from "./engine/types";
-import type { ScanReport, Status, CategoryGroup, Category } from "./engine/types";
+import type { ScanReport, Status, CategoryGroup, Category, ScanKontext } from "./engine/types";
 import { baueFahrplan, AUFWAND_LABEL } from "./engine/effort";
 
-function parseArgs(argv: string[]): { url?: string; json: boolean; all: boolean } {
+function parseArgs(argv: string[]): { url?: string; json: boolean; all: boolean; kontext: ScanKontext } {
   let url: string | undefined;
   let json = false;
   let all = false;
+  // Freiwillige Angaben zum Betreiber. Ohne sie läuft alles wie zuvor —
+  // sie entscheiden nur, ob eine gefundene Abweichung für DIESEN Betreiber
+  // eine Rechtspflicht verletzt (siehe engine/kontext.ts).
+  const roh: Record<string, string> = {};
   for (const a of argv.slice(2)) {
     if (a === "--json") json = true;
     else if (a === "--all") all = true;
+    else if (a.startsWith("--land=")) roh.land = a.slice(7);
+    else if (a.startsWith("--kunden=")) roh.zielgruppe = a.slice(9);
+    else if (a.startsWith("--groesse=")) roh.groesse = a.slice(10);
+    else if (a.startsWith("--angebot=")) roh.angebot = a.slice(10);
     else if (!a.startsWith("--")) url = a;
   }
-  return { url, json, all };
+  return { url, json, all, kontext: parseKontext(roh) };
 }
 
 const STATUS_ICON: Record<Status, string> = { pass: "✓", warn: "!", fail: "✗" };
@@ -46,12 +55,16 @@ function renderText(report: ScanReport, showAll: boolean): string {
     );
   }
   if (report.scanStatus !== "complete") {
-    const offen = report.categories.filter((c) => c.score === null).map((c) => c.category);
+    const offen = report.categories.filter((c) => c.score === null && c.geltung !== "gilt-nicht").map((c) => c.category);
     out.push("");
     out.push(`  ACHTUNG: Scan ${report.scanStatus === "failed" ? "gescheitert" : "unvollständig"} — nicht geprüft: ${offen.join(", ") || "—"}`);
     out.push("  \"Nicht geprüft\" ist nicht dasselbe wie \"in Ordnung\".");
   }
   out.push(`  ${issues} Auffälligkeiten · ${(report.durationMs / 1000).toFixed(1)} s`);
+  if (report.kontext && kontextAngegeben(report.kontext)) {
+    const k = report.kontext;
+    out.push(`  Angaben: Land ${k.land} · Kunden ${k.zielgruppe} · Größe ${k.groesse} · Angebot ${k.angebot}`);
+  }
   out.push("");
 
   // Reihenfolge der Arbeit: sortiert nach Wirkung pro Aufwand, nicht nach
@@ -78,7 +91,14 @@ function renderText(report: ScanReport, showAll: boolean): string {
     out.push(`── ${GROUP_LABELS[group].toUpperCase()} ──────────────────────────────`);
     for (const c of cats) {
       out.push("");
-      out.push(`  ▸ ${CATEGORY_LABELS[c.category as Category]} — Note ${c.grade} (${c.score}/100)`);
+      const kopf =
+        c.geltung === "gilt-nicht"
+          ? "NICHT ANWENDBAR"
+          : c.score === null
+            ? "nicht geprüft"
+            : `Note ${c.grade} (${c.score}/100)`;
+      out.push(`  ▸ ${CATEGORY_LABELS[c.category as Category]} — ${kopf}`);
+      if (c.geltung === "gilt-nicht") out.push(`     ${c.geltungGrund}`);
       const sorted = [...c.findings].sort(
         (a, b) => ({ fail: 0, warn: 1, pass: 2 }[a.status] - { fail: 0, warn: 1, pass: 2 }[b.status])
       );
@@ -104,7 +124,7 @@ function renderText(report: ScanReport, showAll: boolean): string {
 }
 
 async function main() {
-  const { url, json, all } = parseArgs(process.argv);
+  const { url, json, all, kontext } = parseArgs(process.argv);
   if (!url) {
     console.error("Verwendung: npm run scan -- <url> [--json] [--all]");
     console.error("Beispiel:   npm run scan -- example.com");
@@ -112,7 +132,7 @@ async function main() {
   }
 
   try {
-    const report = await runScan(url);
+    const report = await runScan(url, kontext);
     if (json) {
       process.stdout.write(JSON.stringify(report, null, 2) + "\n");
     } else {

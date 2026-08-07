@@ -3,7 +3,7 @@
 // das Content-Modul nutzt anschließend das HTML aus dem Browser-Scan.
 
 import { randomUUID } from "node:crypto";
-import { Category, ScanReport } from "./types";
+import { Category, ScanKontext, ScanReport } from "./types";
 import { runSecurity } from "./modules/security";
 import { runDns } from "./modules/dns";
 import { runBrowserScan } from "./modules/browser";
@@ -19,6 +19,7 @@ import { runLegalPages } from "./modules/legalpages";
 import { runPrivacy } from "./modules/privacy";
 import { runAiAct } from "./modules/aiact";
 import { buildScores } from "./scoring";
+import { KONTEXT_UNBEKANNT, kontextSchluessel, wendeGeltungAn } from "./kontext";
 import { assertPublicHost } from "./ssrf";
 
 // Kurz-Cache: dieselbe URL wird nicht innerhalb 1 h erneut (teuer) gescannt.
@@ -43,13 +44,18 @@ export function normalizeUrl(input: string): string {
   return parsed.toString();
 }
 
-export async function runScan(rawUrl: string): Promise<ScanReport> {
+export async function runScan(rawUrl: string, kontext: ScanKontext = KONTEXT_UNBEKANNT): Promise<ScanReport> {
   const started = Date.now();
   const url = normalizeUrl(rawUrl);
   const hostname = new URL(url).hostname;
 
+  // Der Kontext gehört in den Schlüssel: Dieselbe URL einmal als B2B-
+  // Kleinstbetrieb und einmal als Verbraucher-Shop ergibt zu Recht ein
+  // anderes Urteil.
+  const key = `${url}#${kontextSchluessel(kontext)}`;
+
   // Cache-Treffer? Dann sofort zurück (spart einen kompletten Browser-Scan).
-  const cached = cache.get(url);
+  const cached = cache.get(key);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
     return { ...cached.report, cached: true };
   }
@@ -112,7 +118,10 @@ export async function runScan(rawUrl: string): Promise<ScanReport> {
     }
   }
 
-  const { categories, gruppen, status } = buildScores(allFindings, gelaufen);
+  // Rechtsbezüge an das angegebene Betreiberland anpassen, BEVOR bewertet wird.
+  const angepasst = wendeGeltungAn(allFindings, kontext);
+
+  const { categories, gruppen, status } = buildScores(angepasst, gelaufen, false, kontext);
 
   const report: ScanReport = {
     // Die App vergibt hier die Permalink-Kennung. Das CLI kennt keine
@@ -124,11 +133,12 @@ export async function runScan(rawUrl: string): Promise<ScanReport> {
     scannedAt: new Date().toISOString(),
     durationMs: Date.now() - started,
     scanStatus: status,
+    kontext,
     gruppen,
     categories,
   };
 
-  cache.set(url, { report, at: Date.now() });
+  cache.set(key, { report, at: Date.now() });
   if (cache.size > 500) {
     // ältesten Eintrag entfernen (Map merkt sich Einfüge-Reihenfolge)
     const oldest = cache.keys().next().value;

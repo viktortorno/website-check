@@ -26,14 +26,48 @@ const LIVECHAT_PLATTFORMEN = [
   "zendesk", "hubspot", "userlike", "smartsupp", "chatwoot",
 ];
 
+// Der TECHNISCHE Teil eines Dokuments: Attributwerte und Skriptinhalte —
+// alles außer dem, was ein Besucher liest.
+//
+// Anlass war ein Fehlalarm, den die Fixture-Sammlung gefunden hat: Ein
+// Fachartikel über den AI Act, der die Wörter "Voiceflow" und "Botpress"
+// erwähnt, wurde als Betreiber eines KI-Chatbots geführt. Eine Agentur, die
+// ÜBER Chatbots schreibt, betreibt deshalb keinen — und eine erfundene
+// Rechtspflicht ist teurer als eine übersehene.
+//
+// Inline-Skripte bleiben drin: Widgets werden oft per window.voiceflow.chat
+// geladen und stehen dann in keinem Attribut.
+function technischerTeil(html: string): string {
+  const teile: string[] = [];
+  for (const m of html.matchAll(/\b(?:src|href|data-[a-z-]+|action|content)\s*=\s*["']([^"']+)["']/gi)) {
+    teile.push(m[1]);
+  }
+  for (const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) {
+    teile.push(m[1]);
+  }
+  return teile.join(" ").toLowerCase();
+}
+
 export function runContent(html: string, finalUrl: string, axeRan = false): Finding[] {
   const findings: Finding[] = [];
   if (!html) return findings;
-  const lower = html.toLowerCase();
+  const technisch = technischerTeil(html);
 
   // ---------- DSGVO: Impressum ----------
+  //
+  // Auch die verbreiteten anderen Beschriftungen erkennen. "Rechtliches",
+  // "Anbieterkennzeichnung" und "Legal Notice" sind gängige Überschriften für
+  // dieselbe Pflichtangabe; nur nach dem Wort "Impressum" zu suchen, erzeugte
+  // bei diesen Seiten einen Vorwurf gegen eine korrekt aufgebaute Fußzeile.
+  //
+  // Die inhaltliche Gegenprobe macht ohnehin legalpages.ts: Es ruft die
+  // verlinkte Seite ab und prüft, ob dort die Pflichtangaben stehen. Diese
+  // Stelle hier ist nur die schnelle Vorabsicht — und die darf im Zweifel
+  // großzügig sein, weil ein Fehlalarm hier "high" wiegt.
+  const IMPRESSUM_BEGRIFFE = /impressum|anbieterkennzeichnung|rechtliches|legal[-_ ]?notice|imprint/i;
   const hasImpressum =
-    /href=["'][^"']*impressum/i.test(html) || />\s*impressum\s*</i.test(html);
+    /href=["'][^"']*(impressum|anbieterkennzeichnung|rechtliches|legal-?notice|imprint)/i.test(html) ||
+    new RegExp(`>\\s*(${IMPRESSUM_BEGRIFFE.source})\\s*<`, "i").test(html);
   findings.push(
     hasImpressum
       ? { id: "dsgvo.impressum", category: "dsgvo", title: "Impressum verlinkt", status: "pass", severity: "info", description: "Ein Impressum-Link wurde gefunden." }
@@ -93,8 +127,10 @@ export function runContent(html: string, finalUrl: string, axeRan = false): Find
   } // Ende Fallback-Heuristik (!axeRan)
 
   // ---------- EU AI Act: Chatbot-Transparenz ----------
-  const botPlattform = BOT_PLATTFORMEN.find((w) => lower.includes(w));
-  const livechat = LIVECHAT_PLATTFORMEN.find((w) => lower.includes(w));
+  // Nur eingebundene Ressourcen und Skripte durchsuchen, nicht den Fließtext
+  // (siehe technischerTeil).
+  const botPlattform = BOT_PLATTFORMEN.find((w) => technisch.includes(w));
+  const livechat = LIVECHAT_PLATTFORMEN.find((w) => technisch.includes(w));
   const widget = botPlattform ?? livechat;
   if (widget) {
     const disclosed = /(ki-?(assistent|bot|chat)|künstliche intelligenz|automatisierter (chat|assistent)|virtuelle[rn]? assistent|ai assistant|powered by ai|chatbot)/i.test(html);

@@ -16,7 +16,8 @@
 // Sobald ein Kunde liest, dass eine Compliance-Bewertung nach Vertriebswirkung
 // justiert wurde, ist jede Zahl darin wertlos.
 
-import { Category, CategoryGroup, CategoryResult, CATEGORY_GROUP, Finding, GruppenErgebnis, ScanStatus, Severity } from "./types";
+import { Category, CategoryGroup, CategoryResult, CATEGORY_GROUP, Finding, GruppenErgebnis, ScanKontext, ScanStatus, Severity } from "./types";
+import { geltungFuer, KONTEXT_UNBEKANNT } from "./kontext";
 
 // Strafpunkte pro nicht bestandenem Finding, gestaffelt nach Schwere.
 // "warn" zählt halb so hart wie "fail" (siehe computeCategoryScore).
@@ -158,7 +159,10 @@ export function buildScores(
   gelaufen?: Set<Category>,
   // true = es wird ein "was wäre wenn"-Zustand gerechnet (Fahrplan). Dann
   // bedeutet "keine Findings mehr" nicht "nicht geprüft", sondern "behoben".
-  simulation = false
+  simulation = false,
+  // Freiwillige Angaben zum Betreiber. Ohne sie bleibt alles wie bisher —
+  // "unbekannt" nimmt nichts aus der Bewertung heraus.
+  kontext: ScanKontext = KONTEXT_UNBEKANNT
 ): {
   categories: CategoryResult[];
   gruppen: GruppenErgebnis[];
@@ -168,10 +172,17 @@ export function buildScores(
 
   const categories: CategoryResult[] = cats.map((category) => {
     const findings = allFindings.filter((f) => f.category === category);
+    const urteil = geltungFuer(category, kontext);
     const imLauf = gelaufen ? gelaufen.has(category) : true;
     // Ohne ausgeführte Prüfung gibt es keine Aussage — außer in der Simulation,
     // wo eine leere Kategorie "alles behoben" heißt.
-    const lief = imLauf && (simulation || findings.length > 0);
+    //
+    // "gilt-nicht" wirkt hier genauso wie "nicht gelaufen": keine Note. Der
+    // Unterschied steckt allein im Feld geltung, damit die Darstellung "nicht
+    // anwendbar" schreiben kann statt "nicht geprüft". Die Befunde selbst
+    // bleiben erhalten — eine unbedienbare Seite ist auch ohne BFSG-Pflicht
+    // ein Problem, nur eben ein wirtschaftliches statt eines rechtlichen.
+    const lief = imLauf && urteil.geltung !== "gilt-nicht" && (simulation || findings.length > 0);
     const pruefungen = lief ? zaehlePruefungen(findings) : 0;
     const score = computeCategoryScore(findings, lief);
     return {
@@ -181,6 +192,8 @@ export function buildScores(
       findings,
       checks: pruefungen,
       confidence: Math.round(confidence(pruefungen, category) * 100) / 100,
+      geltung: urteil.geltung,
+      geltungGrund: urteil.grund,
     };
   });
 
@@ -211,9 +224,15 @@ export function buildScores(
   });
 
   // Scanstatus: Wie viel wurde überhaupt gemessen?
+  //
+  // Maßstab sind nur die Kategorien, die für diesen Betreiber überhaupt gelten.
+  // Sonst würde eine korrekt als "nicht anwendbar" erkannte Kategorie den Scan
+  // als unvollständig markieren — die Warnung "hier fehlen Messungen" stünde
+  // ausgerechnet dann da, wenn das Werkzeug besonders genau war.
+  const bewertbar = categories.filter((c) => c.geltung !== "gilt-nicht").length;
   const geprueft = categories.filter((c) => c.score !== null).length;
   const status: ScanStatus =
-    geprueft === 0 ? "failed" : geprueft < cats.length ? "partial" : "complete";
+    geprueft === 0 ? "failed" : geprueft < bewertbar ? "partial" : "complete";
 
   return { categories, gruppen, status };
 }

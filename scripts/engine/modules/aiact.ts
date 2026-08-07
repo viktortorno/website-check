@@ -16,7 +16,7 @@
 // diese Sorte Halbwissen im Report mehr schadet als nützt.
 
 import { Finding } from "../types";
-import { safeFetch } from "../ssrf";
+import { safeFetch, leseRohBegrenzt } from "../ssrf";
 
 // Speicherorte und Namensmuster bekannter Bildgeneratoren.
 const GENERATOR_MUSTER: { name: string; re: RegExp }[] = [
@@ -74,11 +74,15 @@ async function bildKopf(url: string, timeoutMs = 5000): Promise<string> {
         Range: "bytes=0-98304",
       },
     });
-    if (!res.ok && res.status !== 206) return "";
-    const buf = await res.arrayBuffer();
-    // Binär als Latin-1 lesen: die gesuchten Marker sind ASCII-Zeichenketten
-    // in einem sonst binären Strom.
-    return Buffer.from(buf).toString("latin1");
+    if (!res.ok && res.status !== 206) {
+      await res.body?.cancel().catch(() => {});
+      return "";
+    }
+    // Der Range-Header oben ist nur eine Bitte — hier wird die Grenze
+    // durchgesetzt. Binär als Latin-1 lesen: die gesuchten Marker sind
+    // ASCII-Zeichenketten in einem sonst binären Strom.
+    const { bytes } = await leseRohBegrenzt(res, 98_304);
+    return Buffer.from(bytes).toString("latin1");
   } catch {
     return "";
   } finally {

@@ -48,6 +48,27 @@ npx tsx scripts/scan.ts <url> --json
 `--all` zeigt zusätzlich alle bestandenen Prüfungen. Beispiel:
 `npm run scan -- example.com --json`
 
+**Rechtliche Anwendbarkeit** (optional, aber wertvoll): Wenn der Nutzer im
+Gespräch erwähnt, wen er anspricht, wie groß er ist oder wo er sitzt, gib das
+mit — dann behauptet der Report keine Pflichten, die den Betreiber nicht
+treffen.
+
+```bash
+npx tsx scripts/scan.ts <url> --land=de --kunden=b2b --groesse=kleinst --angebot=nur-info
+```
+
+| Flag | Werte |
+|---|---|
+| `--land` | `de` · `eu` · `ausserhalb` |
+| `--kunden` | `b2b` (nur Geschäftskunden) · `b2c` (auch Verbraucher) |
+| `--groesse` | `kleinst` (<10 Beschäftigte, ≤2 Mio. €) · `ab10` |
+| `--angebot` | `nur-info` · `online-abschluss` |
+
+Frag nicht danach, wenn der Nutzer nichts gesagt hat — ohne Angaben läuft der
+Scan wie zuvor. Kategorien, die nachweislich nicht gelten, erscheinen als
+`NICHT ANWENDBAR` mit Begründung; ihre Befunde bleiben als Qualitätshinweis
+stehen.
+
 Ein Scan startet kurz Chromium und dauert ~5–20 Sekunden.
 
 ## Was geprüft wird (8 Bereiche, rund 75 Prüfpunkte)
@@ -99,6 +120,11 @@ kaputt?". Jede Kategorie nennt im Report ihren Geltungsbereich — was sie abdec
 - Automatisierte WCAG-Tests decken ~30–50 % der Kriterien ab — manuelle Prüfung bleibt nötig.
 - Domain-Ablauf ist bei `.de` (DENIC) nicht öffentlich abrufbar.
 - Off-Site-Signale (Backlinks, Marken-Erwähnungen) werden nicht gemessen.
+- Die Anwendbarkeit von Recht ist nicht messbar. Ohne die Flags oben bewertet
+  der Scan nach EU-Maßstab und weist das aus — sag das dem Nutzer dazu, statt
+  eine Pflicht als festgestellt darzustellen.
+- Die Gewichtung der Strafpunkte ist begründet, aber nicht gegen einen
+  Datensatz geeicht (siehe `KALIBRIERUNG.md`).
 
 Details zu jedem Bereich, den Schwellenwerten und Rechtsgrundlagen:
 siehe [`references/pruefbereiche.md`](references/pruefbereiche.md).

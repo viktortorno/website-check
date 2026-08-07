@@ -11,7 +11,7 @@ import { chromium, Browser } from "playwright";
 import axeCore from "axe-core";
 import { Finding } from "../types";
 import { TRACKERS, CMP_SIGNATURES, matchesAny } from "../trackers";
-import { assertPublicUrl } from "../ssrf";
+import { assertPublicUrl, hostErlaubt } from "../ssrf";
 
 // Roh-Performance-Metriken aus dem Browser (werden in performance.ts bewertet).
 export interface PerfMetrics {
@@ -99,15 +99,47 @@ function sandboxArgs(): string[] {
   return ["--no-sandbox", "--disable-setuid-sandbox"];
 }
 
+// Obergrenze für das, was ein einzelner Scan insgesamt herunterlädt.
+//
+// Ohne sie bestimmt die fremde Seite, wie viel Bandbreite und Speicher dieser
+// Server für sie aufwendet — ein 4-GB-Video in einem <video preload="auto">
+// genügt. 80 MB liegen weit über jeder echten Website (der 95. Perzentil-Wert
+// im HTTP Archive liegt bei rund 10 MB) und weit unter dem, was wehtut.
+const MAX_SCAN_BYTES = 80_000_000;
+
+// Chromium auf eine bereits geprüfte IP festnageln.
+//
+// Sonst bleibt ein Zeitfenster offen: Wir lösen den Namen mit Node auf und
+// befinden ihn für gut, danach löst CHROMIUM denselben Namen ein zweites Mal
+// selbst auf — und bekommt womöglich eine andere Antwort (DNS-Rebinding, TTL 0).
+// Geprüft wurde dann eine Adresse, verbunden wird mit einer anderen.
+//
+// --host-resolver-rules=MAP <host> <ip> schließt das für den Haupt-Host: Der
+// Hostname bleibt für SNI und Host-Header erhalten, nur die Auflösung ist fest.
+//
+// Bewusster Nebeneffekt: Zeigt die Domain per Round-Robin auf mehrere Adressen
+// und ist ausgerechnet die erste gerade tot, scheitert der Scan, obwohl die
+// Seite lebt. Das ist der bessere Fehler — er ist SICHTBAR. Der umgekehrte
+// Fehler, eine interne Seite doch abzurufen, wäre unsichtbar.
+function pinneHost(hostname: string, adressen: string[]): string[] {
+  if (!adressen.length) return [];
+  const ip = adressen.find((a) => !a.includes(":")) ?? adressen[0];
+  const ziel = ip.includes(":") ? `[${ip}]` : ip;
+  return [`--host-resolver-rules=MAP ${hostname} ${ziel}`];
+}
+
 export async function runBrowserScan(url: string): Promise<BrowserScanResult> {
   const findings: Finding[] = [];
   let browser: Browser | null = null;
   const requestUrls: string[] = [];
 
   try {
+    // Vor dem Start auflösen — das Ergebnis wird gleich festgenagelt.
+    const ziel = await assertPublicUrl(url);
+
     browser = await chromium.launch({
       headless: true,
-      args: sandboxArgs(),
+      args: [...sandboxArgs(), ...pinneHost(ziel.hostname, ziel.adressen)],
     });
     const context = await browser.newContext({
       userAgent:
@@ -119,19 +151,31 @@ export async function runBrowserScan(url: string): Promise<BrowserScanResult> {
     // Alle ausgehenden Requests mitschneiden.
     page.on("request", (req) => requestUrls.push(req.url()));
 
-    // SSRF-Schutz für den Browser: der Runner prüft nur den START-Host, danach
-    // könnte die Seite per 30x/JS ins interne Netz navigieren. Deshalb jede
-    // NAVIGATION (auch in iframes) erneut gegen die echte Ziel-IP prüfen.
-    // Sub-Requests (Bilder, Skripte) laufen ungeprüft durch — sie liefern der
-    // Auswertung keine Inhalte zurück und ein DNS-Lookup pro Request wäre teuer.
+    // Heruntergeladene Menge mitzählen. sizes() steht erst nach Abschluss des
+    // Requests bereit — das Budget bremst also den NÄCHSTEN Request, nicht den
+    // laufenden. Für einen Bandbreiten-Deckel genügt das; gegen einen einzelnen
+    // endlosen Response wirkt allein das Zeitlimit von page.goto.
+    let geladeneBytes = 0;
+    page.on("requestfinished", (req) => {
+      req.sizes()
+        .then((s) => { geladeneBytes += s.responseBodySize + s.responseHeadersSize; })
+        .catch(() => { /* Request bereits verworfen */ });
+    });
+
+    // Netzgrenze für den Browser: JEDER Request wird geprüft, nicht nur
+    // Navigationen.
+    //
+    // Vorher liefen Sub-Requests (Bilder, Skripte, XHR) ungeprüft durch, mit
+    // der Begründung, sie lieferten der Auswertung nichts zurück. Das stimmt
+    // für den Report — aber nicht für den Server: <img src="http://10.0.0.5/">
+    // ist eine echte Verbindung ins interne Netz, und ob sie lädt oder nicht,
+    // ist über die Ladezeit ablesbar. Ein Bild ist ein Portscan mit anderem
+    // Tag-Namen. Die DNS-Kosten trägt jetzt ein Kurzzeit-Cache je Host
+    // (hostErlaubt), nicht jeder einzelne Request.
     await page.route("**/*", async (route, req) => {
-      if (!req.isNavigationRequest()) return route.continue();
-      try {
-        await assertPublicUrl(req.url());
-        await route.continue();
-      } catch {
-        await route.abort("blockedbyclient");
-      }
+      if (geladeneBytes > MAX_SCAN_BYTES) return route.abort("blockedbyclient");
+      if (await hostErlaubt(req.url())) return route.continue();
+      await route.abort("blockedbyclient");
     });
 
     // Performance-Observer VOR dem Laden registrieren, damit LCP & CLS

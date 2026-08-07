@@ -48,19 +48,19 @@ export const CATEGORY_SHORT: Record<Category, string> = {
 // direkt unter der Kategorie-Überschrift, dort wo die Note steht.
 export const CATEGORY_SCOPE: Record<Category, string> = {
   dsgvo:
-    "Geprüft wird, was beim Seitenaufruf von außen messbar ist: Tracker, Cookies, fremde Einbettungen, Pflichtseiten. Nicht geprüft: Verträge zur Auftragsverarbeitung, Verarbeitungsverzeichnis, Löschkonzept, interne Abläufe.",
+    "Geprüft wird, was beim Seitenaufruf von außen messbar ist: Tracker, Cookies, fremde Einbettungen, Pflichtseiten. Nicht geprüft: Verträge zur Auftragsverarbeitung, Verarbeitungsverzeichnis, Löschkonzept, interne Abläufe — und ob der Betreiber im Geltungsbereich des deutschen Rechts sitzt. Die Befunde sind technische Signale, keine Feststellung eines Verstoßes.",
   security:
     "Geprüft werden Transportverschlüsselung, HTTP-Schutzheader und die E-Mail-Absicherung der Domain. Nicht geprüft: Server, Anwendungslogik, Zugänge — dafür wäre ein Penetrationstest nötig.",
   "ai-act":
     "Geprüft werden sichtbare Anzeichen für KI-Einsatz auf der Website (Chat-Systeme, eingebundene Dienste, Herkunftsspuren in Bildern). Nicht geprüft: welche KI-Systeme das Unternehmen intern nutzt und in welche Risikoklasse sie fallen.",
   accessibility:
-    "Automatisch prüfbar ist rund ein Drittel der WCAG-Kriterien. Tastaturbedienung, Verständlichkeit und Screenreader-Erlebnis brauchen einen manuellen Test.",
+    "Automatisch prüfbar ist rund ein Drittel der WCAG-Kriterien; Tastaturbedienung und Screenreader-Erlebnis brauchen einen manuellen Test. Ob das BFSG für diesen Betreiber überhaupt gilt, kann diese Prüfung nicht feststellen — es trifft bestimmte Verbraucherprodukte und -dienstleistungen, Kleinstunternehmen sind bei Dienstleistungen ausgenommen.",
   seo: "Geprüft werden die technischen On-Page-Signale dieser einen Seite. Nicht geprüft: Rankings, Suchvolumen, Backlinks und alle weiteren Unterseiten.",
-  geo: "Geprüft wird, wie gut diese Seite für KI-Antwortsysteme lesbar und zitierbar ist. Nicht gemessen: ob die Marke in ChatGPT, Perplexity & Co. tatsächlich genannt wird — dazu zählen auch Erwähnungen auf fremden Plattformen.",
+  geo: "Geprüft wird, wie gut diese Seite für KI-Antwortsysteme lesbar und zitierbar ist. Die inhaltlichen Regeln (Absatzlänge, Faktendichte, Definitionssätze) sind Erfahrungswerte, keine belegte Wissenschaft. Nicht gemessen: ob die Marke in ChatGPT, Perplexity & Co. tatsächlich genannt wird.",
   psychology:
     "Geprüft werden wiederkehrende Muster erfolgreicher Seiten (Handlungsaufforderung, Vertrauenssignale, Struktur). Das ersetzt keinen A/B-Test mit echten Besuchern.",
   performance:
-    "Gemessen an einem einzelnen Abruf aus einem Rechenzentrum in Deutschland. Echte Nutzer auf Mobilfunk erleben langsamere Werte.",
+    "Ein einzelner Laborabruf aus einem Rechenzentrum in Deutschland — nicht das, woran Google misst. Die offiziellen Core Web Vitals (LCP, INP, CLS) werden am 75. Perzentil echter Besuche bewertet; INP lässt sich ohne Interaktion nicht erheben und fehlt hier.",
 };
 
 // Gruppierung für die UI: rechtliche Pflichtbereiche vs. Wachstum/Marketing.
@@ -82,6 +82,35 @@ export const GROUP_LABELS: Record<CategoryGroup, string> = {
   compliance: "Rechtssicherheit & Risiko",
   growth: "Sichtbarkeit & Conversion",
 };
+
+// --- Rechtliche Anwendbarkeit (Logik in kontext.ts) ---------------------
+//
+// Freiwillige Angaben des Nutzers über den Betreiber. Sie ändern nicht, WAS
+// gemessen wird, sondern ob ein Messwert für ihn eine Rechtspflicht ist.
+export type Betreiberland = "de" | "eu" | "ausserhalb" | "unbekannt";
+// b2b = ausschließlich Geschäftskunden, b2c = (auch) Verbraucher
+export type Zielgruppe = "b2b" | "b2c" | "unbekannt";
+// kleinst = < 10 Beschäftigte UND ≤ 2 Mio. € Jahresumsatz/Bilanzsumme
+export type Groesse = "kleinst" | "ab10" | "unbekannt";
+// Was die Seite tut: nur informieren oder auch abschließen/verkaufen
+export type Angebot = "nur-info" | "online-abschluss" | "unbekannt";
+
+export interface ScanKontext {
+  land: Betreiberland;
+  zielgruppe: Zielgruppe;
+  groesse: Groesse;
+  angebot: Angebot;
+}
+
+// gilt      — die Pflicht trifft diesen Betreiber
+// gilt-nicht— sie trifft ihn nachweislich nicht; keine Note, nur Hinweise
+// unklar    — von außen nicht feststellbar; es wird bewertet, mit Vorbehalt
+export type Geltung = "gilt" | "gilt-nicht" | "unklar";
+
+export interface GeltungsUrteil {
+  geltung: Geltung;
+  grund: string;
+}
 
 // status  = Ergebnis der Einzelprüfung (Ampel)
 // severity = Gewicht des Verstoßes für die Bewertung
@@ -115,6 +144,15 @@ export interface CategoryResult {
   checks: number; // tatsächlich ausgeführte Prüfungen (0 = nicht geprüft)
   // 0–1: wie belastbar die Aussage ist (Prüfdichte gegen den Sollwert).
   confidence: number;
+  // Trifft die geprüfte Pflicht diesen Betreiber überhaupt?
+  //
+  // Zusammen mit score = null ergeben sich drei unterscheidbare Zustände, die
+  // vorher alle gleich aussahen:
+  //   score = Zahl, geltung "gilt"        → gemessen und verbindlich
+  //   score = null, geltung "gilt-nicht"  → gemessen, aber nicht anwendbar
+  //   score = null, geltung beliebig      → gar nicht gemessen
+  geltung: Geltung;
+  geltungGrund: string;
 }
 
 // Wie vollständig ist dieser Scan?
@@ -156,6 +194,10 @@ export interface ScanReport {
   // Scan bleiben die betroffenen Werte null statt geschätzt zu werden.
   gruppen: GruppenErgebnis[];
   categories: CategoryResult[];
+  // Die Angaben, unter denen dieser Report gilt. Gehört in den gespeicherten
+  // Report, weil ein Permalink sonst nicht nachvollziehbar wäre: Dieselbe URL
+  // mit anderen Angaben ergibt zu Recht ein anderes Urteil.
+  kontext?: ScanKontext;
   cached?: boolean; // true = Ergebnis kam aus dem Kurz-Cache
   error?: string;
   // Einordnung im Vergleich zu allen bisher geprüften Seiten (optional).
