@@ -126,6 +126,14 @@ npm run scan -- firma-xyz.de --land=de --kunden=b2b --groesse=kleinst --angebot=
 Alle Flags sind freiwillig. Ohne sie wird wie zuvor bewertet — nur mit
 ausgewiesenem Vorbehalt statt einer Feststellung.
 
+**Der Seitentyp wird automatisch erkannt.** Aus URL, Überschrift und Schema.org
+leitet das Werkzeug ab, ob es eine Startseite, einen Artikel, eine Produkt- oder
+eine Rechtsseite vor sich hat — und passt die Erwartung an. Eine
+Datenschutzerklärung wird nicht mehr auf einen fehlenden Verkaufsbutton geprüft,
+eine Startseite nicht auf einen fehlenden Breadcrumb-Pfad. Erkannt wird nur, was
+eindeutig ist; im Zweifel bleibt es beim vollen Prüfumfang. Der erkannte Typ
+steht im Report.
+
 **„Experimentell" ist eine dritte Kennzeichnung.** GEO/KI-Suche zählt in die
 Sichtbarkeitsnote, trägt aber sichtbar den Hinweis, dass seine Regeln
 Erfahrungswerte sind und keine belegte Wissenschaft. Niemand kann heute messen,

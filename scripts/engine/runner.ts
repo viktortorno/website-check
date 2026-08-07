@@ -20,6 +20,7 @@ import { runPrivacy } from "./modules/privacy";
 import { runAiAct } from "./modules/aiact";
 import { buildScores } from "./scoring";
 import { KONTEXT_UNBEKANNT, kontextSchluessel, wendeGeltungAn } from "./kontext";
+import { erkenneSeitentyp, wendeSeitentypAn } from "./seitentyp";
 import { assertPublicHost } from "./ssrf";
 
 // Kurz-Cache: dieselbe URL wird nicht innerhalb 1 h erneut (teuer) gescannt.
@@ -119,7 +120,11 @@ export async function runScan(rawUrl: string, kontext: ScanKontext = KONTEXT_UNB
   }
 
   // Rechtsbezüge an das angegebene Betreiberland anpassen, BEVOR bewertet wird.
-  const angepasst = wendeGeltungAn(allFindings, kontext);
+  // Erst der Seitentyp (eine Rechtsseite braucht keinen Verkaufsbutton),
+  // dann das Betreiberland — beide VOR der Bewertung.
+  const seitentyp = erkenneSeitentyp(browserResult.html, browserResult.finalUrl);
+  const nachTyp = wendeSeitentypAn(allFindings, seitentyp);
+  const angepasst = wendeGeltungAn(nachTyp, kontext);
 
   const { categories, gruppen, status } = buildScores(angepasst, gelaufen, false, kontext);
 
@@ -134,6 +139,7 @@ export async function runScan(rawUrl: string, kontext: ScanKontext = KONTEXT_UNB
     durationMs: Date.now() - started,
     scanStatus: status,
     kontext,
+    seitentyp,
     gruppen,
     categories,
   };

@@ -128,6 +128,30 @@ export interface GeltungsUrteil {
   grund: string;
 }
 
+// --- Seitentyp (Logik in seitentyp.ts) ----------------------------------
+//
+// Aus HTML + URL + Schema.org abgeleitet. Ändert nicht, WAS gemessen wird,
+// sondern welche Erwartung an eine Seite überhaupt sinnvoll ist: Ein Impressum
+// braucht keinen Verkaufsbutton, eine Startseite keinen Breadcrumb-Pfad.
+export type Seitentyp =
+  | "homepage"
+  | "artikel"
+  | "produkt"
+  | "kategorie"
+  | "kontakt"
+  | "rechtsseite"
+  | "unbekannt";
+
+export const SEITENTYP_LABEL: Record<Seitentyp, string> = {
+  homepage: "Startseite",
+  artikel: "Artikel / Blogbeitrag",
+  produkt: "Produktseite",
+  kategorie: "Übersichts-/Kategorieseite",
+  kontakt: "Kontaktseite",
+  rechtsseite: "Rechts-/Pflichtseite",
+  unbekannt: "nicht eindeutig",
+};
+
 // status  = Ergebnis der Einzelprüfung (Ampel)
 // severity = Gewicht des Verstoßes für die Bewertung
 export type Status = "pass" | "warn" | "fail";
@@ -214,6 +238,9 @@ export interface ScanReport {
   // Report, weil ein Permalink sonst nicht nachvollziehbar wäre: Dieselbe URL
   // mit anderen Angaben ergibt zu Recht ein anderes Urteil.
   kontext?: ScanKontext;
+  // Erkannter Seitentyp. Erklärt im Report, warum manche Erwartung entfällt
+  // ("als Rechtsseite erkannt — kein Verkaufsbutton nötig").
+  seitentyp?: Seitentyp;
   cached?: boolean; // true = Ergebnis kam aus dem Kurz-Cache
   error?: string;
   // Einordnung im Vergleich zu allen bisher geprüften Seiten (optional).

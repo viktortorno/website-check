@@ -42,6 +42,24 @@ ausgewertet — damit ein Test beweisen kann, dass sie ohne die Flags nicht
 greift. Im Betrieb steht `NODE_ENV` auf `production`; dort kann sie nicht
 wirken.
 
+## Seitentyp senkt Fehlalarme gezielt
+
+Neben "gilt / gilt-nicht" (rechtliche Anwendbarkeit) gibt es einen zweiten
+Mechanismus, der Erwartungen an eine Seite anpasst: den erkannten Seitentyp
+(`seitentyp.ts`). Aus URL, Überschrift und Schema.org wird abgeleitet, ob eine
+Seite Startseite, Artikel, Produkt-, Kategorie-, Kontakt- oder Rechtsseite ist.
+
+Zwei Regeln halten das ehrlich:
+
+- **Im Zweifel "unbekannt", und Unbekanntes ändert nichts.** Nur ein eindeutig
+  erkannter Typ (klares Schema, sprechender Pfad, `<article>` UND Datum) greift
+  in die Bewertung ein. Ein Detektor, der rät, verschiebt Fehlalarme nur.
+- **Es wird ausschließlich entschärft, nie verschärft.** Eine Rechtsseite verliert
+  die Conversion-Vorwürfe (ein Impressum braucht keinen Verkaufsbutton), ein
+  Artikel den harten CTA-Vorwurf, die Startseite den Breadcrumb-Hinweis. Ein
+  Test prüft für jeden Typ, dass kein Befund je härter dasteht als vorher —
+  neue Vorwürfe gehören belegt in ein Modul, nicht als Nebeneffekt hierher.
+
 ## Aktueller Stand
 
 18 HTML-Fälle mit 53 Erwartungen, 16 Netz-Tests, 0 Abweichungen.

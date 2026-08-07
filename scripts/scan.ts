@@ -10,7 +10,7 @@
 
 import { runScan } from "./engine/runner";
 import { parseKontext, kontextAngegeben } from "./engine/kontext";
-import { CATEGORY_LABELS, CATEGORY_SHORT, CATEGORY_GROUP, GROUP_LABELS, CATEGORY_EXPERIMENTELL } from "./engine/types";
+import { CATEGORY_LABELS, CATEGORY_SHORT, CATEGORY_GROUP, GROUP_LABELS, CATEGORY_EXPERIMENTELL, SEITENTYP_LABEL } from "./engine/types";
 import type { ScanReport, Status, CategoryGroup, Category, ScanKontext } from "./engine/types";
 import { baueFahrplan, AUFWAND_LABEL } from "./engine/effort";
 
@@ -64,6 +64,11 @@ function renderText(report: ScanReport, showAll: boolean): string {
   if (report.kontext && kontextAngegeben(report.kontext)) {
     const k = report.kontext;
     out.push(`  Angaben: Land ${k.land} · Kunden ${k.zielgruppe} · Größe ${k.groesse} · Angebot ${k.angebot}`);
+  }
+  // Erkannter Seitentyp — nur wenn eindeutig. Erklärt, warum manche Erwartung
+  // entfällt (eine Rechtsseite wird nicht auf Verkaufsbuttons geprüft).
+  if (report.seitentyp && report.seitentyp !== "unbekannt") {
+    out.push(`  Erkannt als: ${SEITENTYP_LABEL[report.seitentyp]}${report.seitentyp === "rechtsseite" ? " (Conversion-Prüfung entfällt)" : ""}`);
   }
   out.push("");
 
