@@ -140,6 +140,8 @@ export type Seitentyp =
   | "kategorie"
   | "kontakt"
   | "rechtsseite"
+  | "login"     // Anmelde-/Konto-/Dashboard-Seite
+  | "checkout"  // Warenkorb / Kasse
   | "unbekannt";
 
 export const SEITENTYP_LABEL: Record<Seitentyp, string> = {
@@ -149,6 +151,8 @@ export const SEITENTYP_LABEL: Record<Seitentyp, string> = {
   kategorie: "Übersichts-/Kategorieseite",
   kontakt: "Kontaktseite",
   rechtsseite: "Rechts-/Pflichtseite",
+  login: "Login-/Kontoseite",
+  checkout: "Warenkorb / Kasse",
   unbekannt: "nicht eindeutig",
 };
 

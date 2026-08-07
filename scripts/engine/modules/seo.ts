@@ -263,10 +263,15 @@ export async function runSeo(html: string, finalUrl: string, mobil?: MobilMetrik
     .replace(/\s+/g, " ")
     .trim();
   const worte = seitenText ? seitenText.split(/\s+/).filter(Boolean).length : 0;
-  if (worte < 300) {
-    findings.push({ id: "seo.thin-content", category: "seo", title: `Wenig Text auf der Seite (${worte} Wörter)`, status: "warn", severity: "medium", description: "Die Seite enthält wenig Fließtext. Suchmaschinen brauchen Inhalt, um Relevanz für eine Suchanfrage zu erkennen — sehr kurze Seiten ranken selten.", recommendation: "Die Kernthemen ausführlich behandeln: Leistung, Ablauf, Ergebnisse, häufige Fragen. Richtwert für eine Startseite: 600–1200 Wörter.", evidence: [`${worte} Wörter im sichtbaren Text`] });
-  } else {
-    findings.push({ id: "seo.content-length-ok", category: "seo", title: `Ausreichend Text (${worte} Wörter)`, status: "pass", severity: "info", description: "Die Seite hat genug Inhalt, damit Suchmaschinen ihr Thema einordnen können." });
+  // KEINE Wortzahl-Norm. Google nennt ausdrücklich keine bevorzugte Länge, und
+  // eine Regel „unter 300 Wörter = mangelhaft" bestraft eine knappe, klare
+  // Landingpage genauso wie eine leere Seite. Deshalb schlägt hier nur an, was
+  // WIRKLICH leer ist: eine Seite mit kaum verwertbarem Text, die eine
+  // Suchmaschine oder ein KI-Antwortsystem thematisch nicht einordnen kann.
+  // Ab „genug für eine Einordnung" gibt es KEINE Meldung — die Abwesenheit von
+  // Leere ist keine Leistung, die man als „bestanden" abhaken müsste.
+  if (worte < 80) {
+    findings.push({ id: "seo.thin-content", category: "seo", title: `Kaum Text auf der Seite (${worte} Wörter)`, status: "warn", severity: "low", description: "Die Seite enthält fast keinen sichtbaren Fließtext. Ohne Inhalt kann weder Google noch ein KI-Antwortsystem einordnen, worum es geht. Das ist keine Aussage über eine ideale Wortzahl — es geht allein darum, dass hier kaum etwas Verwertbares steht.", recommendation: "Das Kernthema in verständlichen Sätzen beschreiben: Was wird angeboten, für wen, mit welchem Ergebnis. Menge ist zweitrangig — Verständlichkeit zählt.", evidence: [`${worte} Wörter im sichtbaren Text`] });
   }
 
   // ---------- 15. Breadcrumb-Schema ----------

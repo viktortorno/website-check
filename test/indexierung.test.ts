@@ -109,3 +109,32 @@ test("ein Self-Canonical mit trailing-slash-Unterschied ist kein Cross-Verweis",
     assert.ok(!i.has(id), `${id} ist ein Fehlalarm — self mit/ohne Slash ist dieselbe Seite`);
   }
 });
+
+// -------------------------------------------------------- Crawlbare Links
+
+import { analysiereLinkFolgbarkeit } from "../scripts/engine/modules/indexierung";
+
+test("Links ohne echtes href werden als nicht folgbar gezählt", () => {
+  const html = `<html><body>
+    ${Array.from({ length: 8 }, () => `<a href="#" onclick="go()">Menü</a>`).join("")}
+    <a href="/echt">Echt</a><a href="/auch-echt">Auch</a>
+  </body></html>`;
+  const r = analysiereLinkFolgbarkeit(html);
+  assert.equal(r.gesamt, 10);
+  assert.equal(r.nichtFolgbar, 8);
+});
+
+test("eine normal verlinkte Seite erzeugt keinen Crawlbarkeits-Vorwurf", async () => {
+  // Echte Navigation mit echten href — der Normalfall, kein Fehlalarm.
+  const html = `<html><head><meta charset="utf-8"><title>x</title></head><body>
+    ${Array.from({ length: 10 }, (_, i) => `<a href="/seite-${i}">Seite ${i}</a>`).join("")}
+    <a href="#" onclick="toggle()">Menü</a>
+  </body></html>`;
+  const f = await runIndexierung(html, `${srv.basis}/`);
+  assert.ok(!new Set(f.map((x) => x.id)).has("seo.links-not-crawlable"));
+});
+
+test("javascript:-Pseudolinks zählen als nicht folgbar", () => {
+  const r = analysiereLinkFolgbarkeit(`<a href="javascript:void(0)">x</a><a href="/echt">y</a>`);
+  assert.equal(r.nichtFolgbar, 1);
+});

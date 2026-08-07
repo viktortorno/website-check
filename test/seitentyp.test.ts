@@ -62,6 +62,27 @@ test("im Zweifel unbekannt — und Unbekanntes ändert keine Regel", () => {
   assert.deepEqual(wendeSeitentypAn(findings, "unbekannt"), findings, "unbekannt lässt alles unverändert");
 });
 
+test("Login- und Kontoseiten werden erkannt", () => {
+  for (const url of ["https://firma.de/login", "https://firma.de/mein-konto", "https://firma.de/dashboard", "https://firma.de/anmelden"]) {
+    assert.equal(erkenneSeitentyp("<html><body><h1>x</h1></body></html>", url), "login", url);
+  }
+  // Passwortfeld + Anmelde-Überschrift auch ohne sprechenden Pfad.
+  const html = `<html><body><h1>Anmelden</h1><form><input type="password"></form></body></html>`;
+  assert.equal(erkenneSeitentyp(html, "https://firma.de/x"), "login");
+});
+
+test("Checkout/Warenkorb werden erkannt", () => {
+  for (const url of ["https://shop.de/checkout", "https://shop.de/warenkorb", "https://shop.de/kasse"]) {
+    assert.equal(erkenneSeitentyp("<html><body><h1>x</h1></body></html>", url), "checkout", url);
+  }
+});
+
+test("ein Passwortfeld allein macht keine Login-Seite", () => {
+  // Eine Kontaktseite mit einem Passwort-Reset-Feld ist keine Login-Seite.
+  const html = `<html><body><h1>Kontakt</h1><form><input type="password"></form></body></html>`;
+  assert.notEqual(erkenneSeitentyp(html, "https://firma.de/kontakt-x"), "login");
+});
+
 // -------------------------------------------------------- Fehlalarm-Abbau
 
 test("auf einer Rechtsseite entfallen die Conversion-Vorwürfe", () => {
@@ -94,6 +115,27 @@ test("auf einem Artikel wird der harte CTA-Vorwurf zum Hinweis", () => {
   assert.equal(cta.severity, "low");
 });
 
+test("auf einer Login-Seite ist noindex korrekt, kein Mangel", () => {
+  // Der klassische Fehlalarm: seo.noindex (high) gegen eine Login-Seite, die
+  // bewusst nicht im Index stehen soll.
+  const out = wendeSeitentypAn([f("seo.noindex", "seo", { status: "fail", severity: "high" })], "login");
+  const ni = out.find((x) => x.id === "seo.noindex")!;
+  assert.equal(ni.status, "pass");
+  assert.equal(ni.severity, "info");
+});
+
+test("auf Funktions- und Pflichtseiten ist wenig Text kein Mangel", () => {
+  for (const typ of ["login", "checkout", "kontakt", "rechtsseite"] as const) {
+    const out = wendeSeitentypAn([f("seo.thin-content", "seo", { status: "warn", severity: "low" })], typ);
+    assert.equal(out.find((x) => x.id === "seo.thin-content")!.status, "pass", typ);
+  }
+});
+
+test("auf einer Login-Seite entfallen die Conversion-Vorwürfe", () => {
+  const out = wendeSeitentypAn([f("psy.no-cta", "psychology", { status: "fail", severity: "high" })], "login");
+  assert.equal(out.find((x) => x.id === "psy.no-cta")!.status, "pass");
+});
+
 test("auf der Startseite ist ein fehlendes Breadcrumb belanglos", () => {
   const out = wendeSeitentypAn([f("seo.no-breadcrumb", "seo", { status: "warn", severity: "low" })], "homepage");
   const bc = out.find((x) => x.id === "seo.no-breadcrumb")!;
@@ -116,7 +158,7 @@ test("was der Typ nicht betrifft, bleibt unverändert", () => {
 test("kein Seitentyp verschärft je einen Befund", () => {
   const rang: Record<string, number> = { pass: 0, warn: 1, fail: 2 };
   const gewicht: Record<string, number> = { info: 0, low: 1, medium: 2, high: 3, critical: 4 };
-  const alle: Seitentyp[] = ["homepage", "artikel", "produkt", "kategorie", "kontakt", "rechtsseite"];
+  const alle: Seitentyp[] = ["homepage", "artikel", "produkt", "kategorie", "kontakt", "rechtsseite", "login", "checkout"];
   const probe = [
     f("psy.no-cta", "psychology", { status: "fail", severity: "high" }),
     f("seo.no-breadcrumb", "seo", { status: "warn", severity: "low" }),

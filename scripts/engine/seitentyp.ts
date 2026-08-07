@@ -14,7 +14,7 @@
 // Ein Detektor, der bei jeder unklaren Seite rät, verschiebt Fehlalarme nur,
 // statt sie zu senken. Deshalb erkennt dieses Modul lieber zu selten als zu oft.
 
-import { Finding, Seitentyp } from "./types";
+import { Finding, Seitentyp, SEITENTYP_LABEL } from "./types";
 
 // Reihenfolge = Priorität. Die erste zutreffende Regel gewinnt. Eine
 // Rechtsseite kann formal auch wie ein Artikel aussehen (Fließtext, Überschrift)
@@ -45,6 +45,24 @@ export function erkenneSeitentyp(html: string, finalUrl: string): Seitentyp {
   // Der Pfad entscheidet allein — eine Startseite ist über nichts anderes so
   // zuverlässig erkennbar wie über die Wurzel.
   if (pfad === "" || pfad === "/") return "homepage";
+
+  // ---- Login / Konto / Dashboard ------------------------------------------
+  // Funktionale Seiten, die bewusst NICHT im Google-Index stehen sollen. Ihr
+  // `noindex` ist deshalb kein Mangel — genau das entschärft wendeSeitentypAn.
+  // Erkennung über den Pfad ODER ein Passwortfeld bei gleichzeitig kaum Inhalt
+  // (eine Kontaktseite mit Passwort-Reset-Feld soll nicht als Login gelten).
+  const LOGIN_PFAD = /\/(login|log-?in|anmelden|signin|sign-?in|konto|account|mein-?konto|my-?account|dashboard|kundenkonto|kundenbereich|mitgliederbereich)\/?$/i;
+  const hatPasswortfeld = /<input[^>]*type=["']password["']/i.test(html);
+  if (LOGIN_PFAD.test(pfad) || (hatPasswortfeld && /^(\s*)(anmelden|login|einloggen|sign in)\b/i.test(h1))) {
+    return "login";
+  }
+
+  // ---- Checkout / Warenkorb -----------------------------------------------
+  if (/\/(checkout|warenkorb|cart|kasse|zur-?kasse|bestellung|bestellabschluss)\/?$/i.test(pfad)
+    || hatSchema("checkoutpage")
+    || /^(\s*)(warenkorb|kasse|checkout|zur kasse|bestell)/i.test(h1)) {
+    return "checkout";
+  }
 
   // ---- Produkt -------------------------------------------------------------
   if (hatSchema("product", "productgroup") || /\/(produkt|product|artikel-detail)\//i.test(pfad)) {
@@ -98,8 +116,8 @@ export function wendeSeitentypAn(findings: Finding[], typ: Seitentyp): Finding[]
 // Daten-Tabelle, weil jede Zeile eine fachliche Begründung braucht.
 function passeFindingAn(f: Finding, typ: Seitentyp): Finding | null {
   // Conversion-Erwartungen gelten für Seiten, die etwas verkaufen oder zu einer
-  // Handlung führen sollen — nicht für Pflicht- und Lesetexte.
-  const conversionEntfaellt = typ === "rechtsseite";
+  // Handlung führen sollen — nicht für Pflicht-, Funktions- und Lesetexte.
+  const conversionEntfaellt = typ === "rechtsseite" || typ === "login";
 
   if (conversionEntfaellt && f.category === "psychology" && f.status !== "pass") {
     return {
@@ -108,7 +126,33 @@ function passeFindingAn(f: Finding, typ: Seitentyp): Finding | null {
       severity: "info",
       description:
         f.description +
-        " (Diese Seite ist als Pflicht-/Rechtstext erkannt — Conversion-Elemente wie ein Verkaufsbutton sind hier nicht ihr Zweck und werden nicht bewertet.)",
+        " (Diese Seite ist als Pflicht-/Funktionsseite erkannt — Conversion-Elemente wie ein Verkaufsbutton sind hier nicht ihr Zweck und werden nicht bewertet.)",
+    };
+  }
+
+  // Login-/Checkout-Seiten SOLLEN oft nicht im Suchindex stehen. Ein „noindex"
+  // ist dort kein Mangel, sondern richtig — der Vorwurf wäre ein Fehlalarm.
+  if ((typ === "login" || typ === "checkout") && f.id === "seo.noindex") {
+    return {
+      ...f,
+      status: "pass",
+      severity: "info",
+      description: `Diese Seite ist als ${typ === "login" ? "Login-/Kontoseite" : "Warenkorb/Kasse"} erkannt. Dass sie auf „noindex" steht, ist hier korrekt — solche Funktionsseiten gehören bewusst nicht in den Suchindex.`,
+    };
+  }
+
+  // „Kaum Text" ist auf Funktions- und Pflichtseiten normal: Ein Login, ein
+  // Warenkorb, eine Kontaktseite oder ein knappes Impressum leben nicht von
+  // Fließtext. Der Hinweis gilt für Inhaltsseiten, nicht für diese.
+  if (
+    f.id === "seo.thin-content" &&
+    (typ === "login" || typ === "checkout" || typ === "kontakt" || typ === "rechtsseite")
+  ) {
+    return {
+      ...f,
+      status: "pass",
+      severity: "info",
+      description: `Diese Seite ist als ${SEITENTYP_LABEL[typ]} erkannt — dass sie wenig Fließtext hat, ist hier normal und kein SEO-Mangel.`,
     };
   }
 

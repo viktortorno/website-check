@@ -85,6 +85,34 @@ async function ladeZiel(url: string): Promise<Zielinfo | null> {
   }
 }
 
+// Wie viele Links sind für einen Suchmaschinen-Crawler tatsächlich folgbar?
+//
+// Ein Crawler folgt einem `href`. Ein `<a>` ohne href, mit href="#" oder mit
+// href="javascript:…", das die Navigation per onclick im Browser erledigt, ist
+// für ihn eine Sackgasse — die Zielseite wird nie entdeckt. Häufig bei
+// JavaScript-lastigen Seiten (SPAs, Baukästen). Google rendert zwar JS, folgt
+// solchen Pseudo-Links aber unzuverlässig.
+//
+// Exportiert und rein (kein Netz), damit direkt testbar.
+export interface LinkFolgbarkeit {
+  gesamt: number;
+  nichtFolgbar: number;
+}
+
+export function analysiereLinkFolgbarkeit(html: string): LinkFolgbarkeit {
+  let gesamt = 0, nichtFolgbar = 0;
+  for (const m of html.matchAll(/<a\b([^>]*)>/gi)) {
+    const attr = m[1];
+    gesamt++;
+    const href = /\shref=["']([^"']*)["']/i.exec(attr)?.[1];
+    // Kein href, leeres href, reiner Anker oder javascript:-Pseudolink = tot.
+    if (href == null || href.trim() === "" || href.trim() === "#" || /^javascript:/i.test(href.trim())) {
+      nichtFolgbar++;
+    }
+  }
+  return { gesamt, nichtFolgbar };
+}
+
 export async function runIndexierung(html: string, finalUrl: string): Promise<Finding[]> {
   const findings: Finding[] = [];
   if (!html) return findings;
@@ -263,6 +291,21 @@ export async function runIndexierung(html: string, finalUrl: string): Promise<Fi
         recommendation: 'Einen Eintrag mit hreflang="x-default" auf die Sprachauswahl- oder Hauptseite ergänzen.',
       });
     }
+  }
+
+  // --- 4. Crawlbare Links --------------------------------------------------
+  // Konservativ: erst ab einem nennenswerten Anteil UND einer Mindestzahl, damit
+  // einzelne echte JS-Buttons (Menü-Toggle, Modal-Öffner) keinen Fehlalarm
+  // erzeugen. Es geht um Seiten, deren NAVIGATION ohne echte href auskommt.
+  const links = analysiereLinkFolgbarkeit(html);
+  if (links.gesamt >= 8 && links.nichtFolgbar >= 5 && links.nichtFolgbar > links.gesamt * 0.3) {
+    findings.push({
+      id: "seo.links-not-crawlable", category: "seo",
+      title: `${links.nichtFolgbar} von ${links.gesamt} Links für Suchmaschinen nicht folgbar`,
+      status: "warn", severity: "low",
+      description: "Diese Links haben kein echtes Ziel (kein href, nur „#“ oder javascript:) und funktionieren allein per JavaScript. Ein Suchmaschinen-Crawler folgt ihnen unzuverlässig — die verlinkten Seiten werden womöglich nicht entdeckt.",
+      recommendation: "Navigations- und Inhaltslinks als echte <a href=\"…\"> ausgeben. JavaScript-Verhalten kann zusätzlich per onclick darauf liegen, ersetzt das href aber nicht.",
+    });
   }
 
   return findings;
