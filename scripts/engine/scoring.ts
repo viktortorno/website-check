@@ -60,7 +60,7 @@ const CATEGORY_CHECK_TARGET: Record<Category, number> = {
   security: 17,
   "ai-act": 4,
   accessibility: 3,
-  seo: 18,
+  seo: 24,
   geo: 15,
   performance: 4,
   psychology: 7,

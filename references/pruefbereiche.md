@@ -50,8 +50,15 @@ zählt halb). Gewichtung der Bereiche im Gesamtscore und alle Schwellen:
   - **Canonical-Ziel**: erreichbar? indexierbar? Schleife (A↔B) oder Kette (A→B→C)?
     Ein Canonical auf eine `noindex`-Seite verhindert, dass irgendeine der beiden rankt.
   - **hreflang**: Selbstreferenz vorhanden (fehlt sie, verwirft Google das ganze Set),
-    gültige Sprachcodes, `x-default`. Volle Reziprozität bleibt dem Multi-Page-Crawl
-    vorbehalten — ein Ein-Seiten-Scan kann sie nicht prüfen.
+    gültige Sprachcodes, `x-default`. Volle Reziprozität bleibt offen (bräuchte den Abruf
+    jeder Sprachvariante).
+  - **JS-Links ohne echtes href**: `<a>` ohne href / nur „#" / `javascript:` sind für Crawler
+    Sackgassen.
+- **Mehrseiten-Crawl** (begrenzt, HTTP-only, ~25 URLs aus Sitemap + interner Verlinkung):
+  seitenübergreifende Checks, die auf einer Einzelseite unsichtbar sind — **doppelte Titles
+  und Descriptions**, **interne 404er**, **Redirect-Ketten**, **noindex-Seiten in der Sitemap**,
+  **verwaiste Seiten** (in Sitemap, nicht von der Startseite verlinkt). Umfang gedeckelt und im
+  Report ausgewiesen; kein Chromium je Unterseite, daher schnell.
 
 ## ✨ GEO / KI-Suche (Generative Engine Optimization)
 

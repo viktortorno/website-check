@@ -77,6 +77,9 @@ export interface FixtureOptionen {
   // Absolute Basis für ein Canonical-Ziel (nur /self-slash). Wird nach dem
   // Start gesetzt, weil der Port erst dann feststeht.
   basisFuerCanonical?: string;
+  // Pfade, die die sitemap.xml listen soll (Default: nur "/"). Relative Pfade
+  // sind erlaubt — runCrawl löst sie gegen den Origin auf.
+  sitemapUrls?: string[];
 }
 
 export async function starteFixtureServer(opt: FixtureOptionen = {}): Promise<FixtureServer> {
@@ -194,12 +197,28 @@ export async function starteFixtureServer(opt: FixtureOptionen = {}): Promise<Fi
           <link rel="alternate" hreflang="deutsch" href="/hreflang-kaputt">
           <link rel="alternate" hreflang="en" href="/en/"></head><body><h1>x</h1></body></html>`);
 
+      // --- Crawl-Fixtures (Mehrseiten-Checks) ----------------------------
+      case "/crawl-a":
+        return html(`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Gleicher Titel</title><meta name="description" content="Gleiche Beschreibung"></head><body><h1>A</h1></body></html>`);
+      case "/crawl-b":
+        return html(`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Gleicher Titel</title><meta name="description" content="Gleiche Beschreibung"></head><body><h1>B</h1></body></html>`);
+      case "/crawl-uniq":
+        return html(`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Eigener Titel</title><meta name="description" content="Eigene Beschreibung"></head><body><h1>Uniq</h1></body></html>`);
+      case "/crawl-redir1":
+        res.writeHead(301, { location: "/crawl-redir2" }); return res.end();
+      case "/crawl-redir2":
+        res.writeHead(301, { location: "/crawl-uniq" }); return res.end();
+      case "/crawl-noindex":
+        return html(`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Noindex-Seite</title><meta name="robots" content="noindex"></head><body><h1>NI</h1></body></html>`);
+
       // --- robots.txt-Varianten (geo) ------------------------------------
       case "/robots.txt":
         return text(opt.robots ?? "User-agent: *\nAllow: /\n\nUser-agent: GPTBot\nDisallow: /\n\nSitemap: /sitemap.xml\n");
-      case "/sitemap.xml":
+      case "/sitemap.xml": {
         res.writeHead(200, { "content-type": "application/xml" });
-        return res.end('<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>/</loc></url></urlset>');
+        const smUrls = opt.sitemapUrls ?? ["/"];
+        return res.end(`<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${smUrls.map((u) => `<url><loc>${u}</loc></url>`).join("")}</urlset>`);
+      }
       case "/llms.txt":
         return text("# Musterbau GmbH\n\n> Schlüsselfertiger Hallenbau.\n");
 
