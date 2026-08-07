@@ -11,11 +11,11 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { starteFixtureServer, FixtureServer } from "./fixture-server";
-import { runGeo } from "../scripts/engine/modules/geo";
-import { runLegalPages } from "../scripts/engine/modules/legalpages";
-import { runAiAct } from "../scripts/engine/modules/aiact";
-import { runSecurity } from "../scripts/engine/modules/security";
-import { safeFetch, leseBegrenzt, assertPublicUrl, _leereHostCache } from "../scripts/engine/ssrf";
+import { runGeo } from "../lib/scan/modules/geo";
+import { runLegalPages } from "../lib/scan/modules/legalpages";
+import { runAiAct } from "../lib/scan/modules/aiact";
+import { runSecurity } from "../lib/scan/modules/security";
+import { safeFetch, leseBegrenzt, assertPublicUrl, _leereHostCache } from "../lib/scan/ssrf";
 
 let srv: FixtureServer;
 

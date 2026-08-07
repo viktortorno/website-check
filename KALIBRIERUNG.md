@@ -44,7 +44,7 @@ wirken.
 
 ## Aktueller Stand
 
-18 HTML-Fälle mit 53 Erwartungen, 12 Netz-Tests, 0 Abweichungen.
+18 HTML-Fälle mit 53 Erwartungen, 16 Netz-Tests, 0 Abweichungen.
 
 Beim Aufbau der Sammlung wurden zwei reale Fehlalarme gefunden und behoben:
 
