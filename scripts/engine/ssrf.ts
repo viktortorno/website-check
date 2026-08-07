@@ -56,6 +56,35 @@ export function isPrivateIp(ip: string): boolean {
 // prüfen Websites" und "wir klopfen Ports ab" ist genau diese Zeile.
 const ERLAUBTE_PORTS = new Set(["", "80", "443"]);
 
+// Die einzige Ausnahme — für die eigene Testsuite.
+//
+// Ohne sie lassen sich security, geo, legalpages, seo und aiact nicht gegen
+// bekannte Wahrheit prüfen: Sie rufen echte Adressen ab, und ein lokaler
+// Fixture-Server läuft auf 127.0.0.1, also genau auf dem, was dieser Schutz
+// (zu Recht) sperrt. Das Ergebnis war eine Lücke ausgerechnet in den Modulen
+// mit den meisten Rechtsbehauptungen.
+//
+// Drei Sicherungen, damit daraus kein Loch wird:
+//   1. ZWEI unabhängige Bedingungen müssen gleichzeitig gelten. Ein versehentlich
+//      gesetztes Flag allein genügt nicht.
+//   2. Erlaubt wird ausschließlich Loopback — 10.x, 192.168.x und die
+//      Cloud-Metadaten-Adresse bleiben auch im Test gesperrt.
+//   3. Zur Laufzeit ausgewertet, nicht als Modul-Konstante. Nur so kann ein
+//      Test beweisen, dass ohne die Flags alles blockiert bleibt (siehe
+//      test/netzgrenze.test.ts).
+//
+// Im Betrieb steht NODE_ENV auf "production"; die Ausnahme kann dort nicht
+// greifen, selbst wenn jemand SCAN_ALLOW_LOOPBACK setzt.
+function loopbackErlaubt(): boolean {
+  return process.env.NODE_ENV === "test" && process.env.SCAN_ALLOW_LOOPBACK === "1";
+}
+
+function istLoopback(ip: string): boolean {
+  const mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  const v4 = mapped ? mapped[1] : ip;
+  return v4.startsWith("127.") || v4 === "::1";
+}
+
 // Ergebnis einer Zielprüfung: die aufgelösten Adressen werden zurückgegeben,
 // damit der Aufrufer sie festnageln kann (siehe pinneHost in browser.ts).
 export interface ZielPruefung {
@@ -75,7 +104,9 @@ export async function assertPublicHost(hostname: string): Promise<ZielPruefung> 
     throw new Error("Domain konnte nicht aufgelöst werden.");
   }
   if (!addrs.length) throw new Error("Domain konnte nicht aufgelöst werden.");
+  const testLoopback = loopbackErlaubt();
   for (const a of addrs) {
+    if (testLoopback && istLoopback(a.address)) continue;
     if (isPrivateIp(a.address)) {
       throw new Error("Diese Domain zeigt auf eine interne/reservierte Adresse und wird nicht gescannt.");
     }
@@ -95,7 +126,9 @@ export async function assertPublicUrl(rawUrl: string): Promise<ZielPruefung> {
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error("Nur http/https-URLs sind erlaubt.");
   }
-  if (!ERLAUBTE_PORTS.has(parsed.port)) {
+  // Im Testmodus darf der Fixture-Server auf einem hohen Port lauschen —
+  // aber nur er: Die Ausnahme greift ausschließlich zusammen mit Loopback.
+  if (!ERLAUBTE_PORTS.has(parsed.port) && !loopbackErlaubt()) {
     throw new Error("Nur die Standard-Ports 80 und 443 werden abgerufen.");
   }
   return assertPublicHost(parsed.hostname);
@@ -121,7 +154,7 @@ export async function hostErlaubt(rawUrl: string): Promise<boolean> {
     return false;
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
-  if (!ERLAUBTE_PORTS.has(parsed.port)) return false;
+  if (!ERLAUBTE_PORTS.has(parsed.port) && !loopbackErlaubt()) return false;
 
   const key = parsed.hostname;
   const now = Date.now();

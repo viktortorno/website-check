@@ -126,10 +126,16 @@ npm run scan -- firma-xyz.de --land=de --kunden=b2b --groesse=kleinst --angebot=
 Alle Flags sind freiwillig. Ohne sie wird wie zuvor bewertet — nur mit
 ausgewiesenem Vorbehalt statt einer Feststellung.
 
+**„Experimentell" ist eine dritte Kennzeichnung.** GEO/KI-Suche zählt in die
+Sichtbarkeitsnote, trägt aber sichtbar den Hinweis, dass seine Regeln
+Erfahrungswerte sind und keine belegte Wissenschaft. Niemand kann heute messen,
+ob eine kürzere Absatzlänge dazu führt, dass ChatGPT eine Seite zitiert.
+
 **Kalibrierung.** Die Regeln werden gegen Testseiten mit bekannter Wahrheit
-geprüft, mit Schwerpunkt auf der Frage „erzeugt ein korrektes Setup garantiert
-keinen Vorwurf?". Methodik, Ergebnisse und die bekannten Lücken stehen in
-[`KALIBRIERUNG.md`](KALIBRIERUNG.md).
+geprüft — HTML-Fixtures für die Auswertung, ein lokaler Fixture-Server für die
+Module, die Adressen abrufen. Schwerpunkt ist die Frage „erzeugt ein korrektes
+Setup garantiert keinen Vorwurf?". Methodik, Ergebnisse und die bekannten
+Lücken stehen in [`KALIBRIERUNG.md`](KALIBRIERUNG.md).
 
 ## Grenzen
 
@@ -144,9 +150,10 @@ keinen Vorwurf?". Methodik, Ergebnisse und die bekannten Lücken stehen in
   „Bewertung") bewertet das Werkzeug nach EU-Maßstab und weist den Vorbehalt
   aus. Die Befunde bleiben in jedem Fall technische Signale, keine Feststellung
   eines Verstoßes.
-- **Die Höhe der Strafpunkte ist nicht geeicht.** Dass ein kritischer Befund 40
-  Punkte kostet, ist fachlich begründet, aber nicht gegen einen Datensatz real
-  bewerteter Seiten kalibriert. Siehe `KALIBRIERUNG.md`.
+- **Die Höhe der Strafpunkte ist noch nicht geeicht.** Dass ein kritischer
+  Befund 40 Punkte kostet, ist fachlich begründet, aber nicht gegen einen
+  Datensatz real bewerteter Seiten geprüft. Der Messrahmen dafür steht
+  (`KALIBRIERUNG.md`), die Stichprobe fehlt.
 - **Der Consent-Vorgang wird nicht durchgespielt.** Geprüft wird der Zustand
   VOR jeder Entscheidung. Ob abgelehnte Tracker trotzdem feuern, misst dieses
   Werkzeug nicht.

@@ -10,7 +10,7 @@
 
 import { runScan } from "./engine/runner";
 import { parseKontext, kontextAngegeben } from "./engine/kontext";
-import { CATEGORY_LABELS, CATEGORY_SHORT, CATEGORY_GROUP, GROUP_LABELS } from "./engine/types";
+import { CATEGORY_LABELS, CATEGORY_SHORT, CATEGORY_GROUP, GROUP_LABELS, CATEGORY_EXPERIMENTELL } from "./engine/types";
 import type { ScanReport, Status, CategoryGroup, Category, ScanKontext } from "./engine/types";
 import { baueFahrplan, AUFWAND_LABEL } from "./engine/effort";
 
@@ -97,7 +97,10 @@ function renderText(report: ScanReport, showAll: boolean): string {
           : c.score === null
             ? "nicht geprüft"
             : `Note ${c.grade} (${c.score}/100)`;
-      out.push(`  ▸ ${CATEGORY_LABELS[c.category as Category]} — ${kopf}`);
+      // Die Unsicherheit gehört an die Note, nicht in eine Fußnote.
+      const experimentell = CATEGORY_EXPERIMENTELL[c.category as Category];
+      out.push(`  ▸ ${CATEGORY_LABELS[c.category as Category]} — ${kopf}${experimentell ? "  [experimentell]" : ""}`);
+      if (experimentell) out.push(`     ${experimentell}`);
       if (c.geltung === "gilt-nicht") out.push(`     ${c.geltungGrund}`);
       const sorted = [...c.findings].sort(
         (a, b) => ({ fail: 0, warn: 1, pass: 2 }[a.status] - { fail: 0, warn: 1, pass: 2 }[b.status])

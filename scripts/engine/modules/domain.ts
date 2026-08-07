@@ -35,6 +35,16 @@ async function fetchRdap(domain: string): Promise<RdapResponse | null> {
   }
 }
 
+// Domains, die nach RFC 2606 / RFC 6761 für Beispiele und Tests reserviert
+// sind. Sie haben ein echtes Ablaufdatum in der Registry, das die IANA
+// routinemäßig verlängert.
+//
+// Anlass: Ein Reviewer scannte example.com und bekam "Domain läuft in X Tagen
+// ab" als Mangel gemeldet. Das Datum war korrekt — die Schlussfolgerung war
+// wertlos. Eine formal richtige Warnung, die niemand umsetzen kann, ist keine
+// Prüfung, sondern Rauschen.
+const RESERVIERTE_DOMAIN = /(^|\.)(example\.(com|net|org)|test|invalid|localhost|example)$/i;
+
 export async function runDomain(hostname: string): Promise<Finding[]> {
   const findings: Finding[] = [];
   const domain = registrableDomain(hostname);
@@ -63,12 +73,29 @@ export async function runDomain(hostname: string): Promise<Finding[]> {
   const days = Math.round((new Date(expiry).getTime() - Date.now()) / 86400000);
   const dateStr = new Date(expiry).toLocaleDateString("de-DE");
 
+  if (RESERVIERTE_DOMAIN.test(hostname)) {
+    findings.push({
+      id: "security.domain-reserved",
+      category: "security",
+      title: "Reservierte Beispiel-/Testdomain",
+      status: "pass",
+      severity: "info",
+      description: `Diese Domain ist nach RFC 2606 für Beispiele und Tests reserviert und wird von der IANA verwaltet. Das Ablaufdatum (${dateStr}) ist echt, aber ohne Aussagekraft — es wird routinemäßig verlängert.`,
+    });
+    return findings;
+  }
+
   if (days < 0) {
     findings.push({ id: "security.domain-expired", category: "security", title: "Domain ist abgelaufen", status: "fail", severity: "critical", description: `Die Domain ist laut Registry seit ${Math.abs(days)} Tagen abgelaufen (${dateStr}). Website und E-Mail können jederzeit ausfallen oder die Domain von Dritten übernommen werden.`, recommendation: "Domain SOFORT beim Anbieter verlängern.", evidence: [`Ablauf: ${dateStr}`] });
   } else if (days < 14) {
     findings.push({ id: "security.domain-expiring-urgent", category: "security", title: `Domain läuft in ${days} Tagen ab`, status: "fail", severity: "high", description: `Die Domain läuft am ${dateStr} ab. Ohne Verlängerung fallen Website und E-Mail aus.`, recommendation: "Verlängerung sofort sicherstellen, idealerweise Auto-Renew aktivieren.", evidence: [`Ablauf: ${dateStr}`] });
   } else if (days < 45) {
-    findings.push({ id: "security.domain-expiring", category: "security", title: `Domain läuft in ${days} Tagen ab`, status: "warn", severity: "medium", description: `Die Domain läuft am ${dateStr} ab.`, recommendation: "Rechtzeitig verlängern bzw. Auto-Renew prüfen.", evidence: [`Ablauf: ${dateStr}`] });
+    // severity low statt medium: Ob eine automatische Verlängerung aktiv ist,
+    // steht in keiner Registry-Auskunft. Bei aktiviertem Auto-Renew — dem
+    // Normalfall — ist eine Restlaufzeit von sechs Wochen kein Mangel. Zehn
+    // Punkte Abzug für einen Zustand, der meistens völlig in Ordnung ist,
+    // wäre eine erfundene Dringlichkeit.
+    findings.push({ id: "security.domain-expiring", category: "security", title: `Domain läuft in ${days} Tagen ab`, status: "warn", severity: "low", description: `Die Domain läuft am ${dateStr} ab. Ist beim Anbieter eine automatische Verlängerung aktiv, ist das kein Mangel — von außen lässt sich das nicht feststellen.`, recommendation: "Auto-Renew beim Anbieter prüfen; falls nicht aktiv, rechtzeitig verlängern.", evidence: [`Ablauf: ${dateStr}`] });
   } else {
     findings.push({ id: "security.domain-ok", category: "security", title: "Domain-Registrierung gültig", status: "pass", severity: "info", description: `Die Domain ist noch ${days} Tage registriert (bis ${dateStr}).` });
   }

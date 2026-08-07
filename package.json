@@ -8,7 +8,7 @@
     "scan": "tsx scripts/scan.ts",
     "setup": "playwright install chromium",
     "postinstall": "playwright install chromium",
-    "test": "tsx --test test/*.test.ts",
+    "test": "NODE_ENV=test tsx --test test/*.test.ts",
     "lint": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

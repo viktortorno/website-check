@@ -63,6 +63,22 @@ export const CATEGORY_SCOPE: Record<Category, string> = {
     "Ein einzelner Laborabruf aus einem Rechenzentrum in Deutschland — nicht das, woran Google misst. Die offiziellen Core Web Vitals (LCP, INP, CLS) werden am 75. Perzentil echter Besuche bewertet; INP lässt sich ohne Interaktion nicht erheben und fehlt hier.",
 };
 
+// Bereiche, deren Regeln auf Erfahrungswerten beruhen statt auf Messbarem
+// oder Rechtstexten.
+//
+// GEO ist der einzige Fall. Die Regeln (Absatzlänge, Faktendichte,
+// Definitionssätze, llms.txt) sind plausibel und branchenüblich — belegt sind
+// sie nicht. Niemand kann heute messen, ob eine kürzere Absatzlänge dazu
+// führt, dass ChatGPT eine Seite zitiert.
+//
+// Das Gewicht in der Sichtbarkeitsnote bleibt trotzdem: KI-Suche ist ein
+// realer Kanal, und ihn aus der Bewertung zu nehmen, würde ihn verstecken
+// statt einordnen. Aber die Unsicherheit gehört AN die Note, nicht ins
+// Kleingedruckte darunter — wer eine Zahl sieht, liest den Fußnotentext nicht.
+export const CATEGORY_EXPERIMENTELL: Partial<Record<Category, string>> = {
+  geo: "Die Regeln dieses Bereichs sind Erfahrungswerte aus der Praxis, keine belegte Wissenschaft. Nimm die Note als Anhaltspunkt, nicht als Messwert.",
+};
+
 // Gruppierung für die UI: rechtliche Pflichtbereiche vs. Wachstum/Marketing.
 // (Compliance = Risiko-Vermeidung, Growth = Sichtbarkeit & Umsatz.)
 export type CategoryGroup = "compliance" | "growth";
