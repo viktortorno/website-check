@@ -23,6 +23,21 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   performance: "Performance / Ladezeit",
 };
 
+// Kurzform für enge Stellen (Mono-Zeilen, Tabellen auf dem Telefon). Die
+// langen Labels enthalten einen Schrägstrich ("SEO / Sichtbarkeit") und
+// brechen dort um — mitten im Begriff, was in Versalien besonders unschön
+// aussieht.
+export const CATEGORY_SHORT: Record<Category, string> = {
+  dsgvo: "DSGVO",
+  security: "IT-Sicherheit",
+  "ai-act": "EU AI Act",
+  accessibility: "Barrierefreiheit",
+  seo: "SEO",
+  geo: "KI-Suche",
+  psychology: "Conversion",
+  performance: "Ladezeit",
+};
+
 // Was diese Prüfung in dem Bereich abdeckt — und was nicht.
 //
 // Grund: „DSGVO: Note B" liest sich wie ein Urteil über die Datenschutz-
