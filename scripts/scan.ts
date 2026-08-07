@@ -9,7 +9,7 @@
 // Gibt bei --json ausschließlich JSON auf stdout aus (maschinenlesbar für Claude).
 
 import { runScan } from "./engine/runner";
-import { CATEGORY_LABELS, CATEGORY_GROUP, GROUP_LABELS } from "./engine/types";
+import { CATEGORY_LABELS, CATEGORY_SHORT, CATEGORY_GROUP, GROUP_LABELS } from "./engine/types";
 import type { ScanReport, Status, CategoryGroup, Category } from "./engine/types";
 import { baueFahrplan, AUFWAND_LABEL } from "./engine/effort";
 
@@ -36,7 +36,21 @@ function renderText(report: ScanReport, showAll: boolean): string {
   const issues = report.categories.reduce(
     (n, c) => n + c.findings.filter((f) => f.status !== "pass").length, 0
   );
-  out.push(`  Gesamt: Note ${report.overallGrade}  (${report.overallScore}/100)`);
+  // Zwei getrennte Werte statt einer gemeinsamen Note: Gute Sichtbarkeit
+  // gleicht keine fehlende Pflichtangabe aus.
+  for (const g of report.gruppen) {
+    const label = g.gruppe === "compliance" ? "Rechtssicherheit" : "Sichtbarkeit  ";
+    out.push(
+      `  ${label}: ` +
+      (g.score === null ? "nicht geprüft" : `Note ${g.grade}  (${g.score}/100)${g.gedeckelt ? "  [kritischer Befund deckelt die Note]" : ""}`)
+    );
+  }
+  if (report.scanStatus !== "complete") {
+    const offen = report.categories.filter((c) => c.score === null).map((c) => c.category);
+    out.push("");
+    out.push(`  ACHTUNG: Scan ${report.scanStatus === "failed" ? "gescheitert" : "unvollständig"} — nicht geprüft: ${offen.join(", ") || "—"}`);
+    out.push("  \"Nicht geprüft\" ist nicht dasselbe wie \"in Ordnung\".");
+  }
   out.push(`  ${issues} Auffälligkeiten · ${(report.durationMs / 1000).toFixed(1)} s`);
   out.push("");
 
@@ -48,10 +62,13 @@ function renderText(report: ScanReport, showAll: boolean): string {
     out.push("");
     for (const [i, s] of plan.schritte.entries()) {
       out.push(`  ${String(i + 1).padStart(2, "0")}. ${s.finding.title}`);
-      out.push(`      ${AUFWAND_LABEL[s.aufwand]} · +${s.punkteKategorie} Punkte bei ${CATEGORY_LABELS[s.finding.category as Category]}`);
+      out.push(`      ${AUFWAND_LABEL[s.aufwand]} · +${s.punkteKategorie} Punkte bei ${CATEGORY_SHORT[s.finding.category as Category]}`);
     }
     out.push("");
-    out.push(`  Zusammen: ${report.overallScore} → ${plan.neuerScore} von 100`);
+    if (plan.vorher !== null && plan.neuerScore !== null) {
+      const gruppe = plan.gruppe === "compliance" ? "Rechtssicherheit" : "Sichtbarkeit";
+      out.push(`  Zusammen: ${gruppe} ${plan.vorher} → ${plan.neuerScore} von 100`);
+    }
     out.push("");
   }
 
@@ -101,6 +118,14 @@ async function main() {
     } else {
       process.stdout.write(renderText(report, all));
     }
+
+    // Exit-Code sagt die Wahrheit über die Vollständigkeit.
+    //
+    // Vorher endete auch ein Scan mit Code 0, bei dem der Browser gar nicht
+    // startete — in einer Pipeline sah das aus wie ein sauberer Durchlauf.
+    // 2 = nichts geprüft, 1 = teilweise, 0 = vollständig.
+    if (report.scanStatus === "failed") process.exit(2);
+    if (report.scanStatus === "partial") process.exit(1);
   } catch (err) {
     console.error("Scan fehlgeschlagen:", (err as Error).message);
     process.exit(1);

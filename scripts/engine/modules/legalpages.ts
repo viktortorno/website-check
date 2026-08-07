@@ -144,7 +144,8 @@ interface Resolved {
 
 // Erst den verlinkten Pfad, dann die üblichen Fallback-Pfade probieren.
 async function resolvePage(
-  html: string, finalUrl: string, origin: string, linkPattern: RegExp, fallbacks: string[]
+  html: string, finalUrl: string, origin: string, linkPattern: RegExp, fallbacks: string[],
+  erwartet: "impressum" | "datenschutz" = "impressum"
 ): Promise<Resolved | null> {
   const linked = findLink(html, linkPattern, origin);
 
@@ -176,9 +177,22 @@ async function resolvePage(
     return { url: linked, inline: false, page: await loadPage(linked) };
   }
 
+  // Der Fallback probiert die üblichen Pfade durch, wenn kein Link gefunden
+  // wurde. Vorher genügte dafür "HTTP 200 und mehr als 200 Zeichen" — und
+  // damit qualifizierte sich jede Seite, die auf unbekannte Pfade mit einer
+  // gestalteten 200er-Antwort reagiert (Soft-404, SPA-Fallback, Startseite).
+  // Der Bericht bewertete dann die Startseite als Impressum.
+  //
+  // Jetzt muss der Text auch inhaltlich nach einer Rechtsseite aussehen.
+  const RECHTSSEITEN_MERKMALE = erwartet === "impressum"
+    ? /impressum|anbieterkennzeichnung|verantwortlich\s+(für|i\.?\s?S\.?\s?d\.?)|vertreten durch|umsatzsteuer|handelsregister/i
+    : /datenschutz|verarbeitung personenbezogener daten|betroffenenrechte|auftragsverarbeit|rechtsgrundlage|art\.?\s?6\s?(abs|absatz)/i;
+
   for (const path of fallbacks) {
     const page = await loadPage(origin + path);
-    if (page.ok && page.text.length > 200) return { url: origin + path, inline: false, page };
+    if (!page.ok || page.text.length <= 200) continue;
+    if (!RECHTSSEITEN_MERKMALE.test(page.text)) continue; // sieht nicht danach aus
+    return { url: origin + path, inline: false, page };
   }
   return null;
 }
@@ -376,8 +390,8 @@ export async function runLegalPages(html: string, finalUrl: string): Promise<Fin
   if (!origin) return [];
 
   const [impressum, privacy] = await Promise.all([
-    resolvePage(html, finalUrl, origin, /impressum|imprint/i, IMPRESSUM_FALLBACKS),
-    resolvePage(html, finalUrl, origin, /datenschutz|privacy/i, PRIVACY_FALLBACKS),
+    resolvePage(html, finalUrl, origin, /impressum|imprint/i, IMPRESSUM_FALLBACKS, "impressum"),
+    resolvePage(html, finalUrl, origin, /datenschutz|privacy/i, PRIVACY_FALLBACKS, "datenschutz"),
   ]);
 
   return [

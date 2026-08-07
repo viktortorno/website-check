@@ -3,7 +3,7 @@
 // das Content-Modul nutzt anschließend das HTML aus dem Browser-Scan.
 
 import { randomUUID } from "node:crypto";
-import { ScanReport } from "./types";
+import { Category, ScanReport } from "./types";
 import { runSecurity } from "./modules/security";
 import { runDns } from "./modules/dns";
 import { runBrowserScan } from "./modules/browser";
@@ -100,7 +100,19 @@ export async function runScan(rawUrl: string): Promise<ScanReport> {
     ...aiActFindings,
   ];
 
-  const { categories, overallScore, overallGrade } = buildScores(allFindings);
+  // Welche Kategorien wurden tatsächlich geprüft? Der Browser ist der
+  // Flaschenhals — scheitert er, gibt es kein HTML und die darauf
+  // aufsetzenden Module liefern nichts. Ohne diese Unterscheidung bekämen
+  // leere Kategorien eine Note (siehe scoring.ts).
+  const browserLief = browserResult.html !== "";
+  const gelaufen = new Set<Category>(["security"]);
+  if (browserLief) {
+    for (const c of ["dsgvo", "ai-act", "accessibility", "seo", "geo", "performance", "psychology"] as Category[]) {
+      gelaufen.add(c);
+    }
+  }
+
+  const { categories, gruppen, status } = buildScores(allFindings, gelaufen);
 
   const report: ScanReport = {
     // Die App vergibt hier die Permalink-Kennung. Das CLI kennt keine
@@ -111,8 +123,8 @@ export async function runScan(rawUrl: string): Promise<ScanReport> {
     finalUrl: browserResult.finalUrl,
     scannedAt: new Date().toISOString(),
     durationMs: Date.now() - started,
-    overallScore,
-    overallGrade,
+    scanStatus: status,
+    gruppen,
     categories,
   };
 

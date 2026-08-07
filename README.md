@@ -1,7 +1,7 @@
 # 🛡️ Website-Check
 
 Ein **deterministischer** Website-Auditor als [Claude](https://claude.com/claude-code)-Skill **und** CLI.
-Prüft eine beliebige Website per URL in **8 Bereichen** (rund 67 Prüfpunkte) — von rechtlichen Pflichten
+Prüft eine beliebige Website per URL in **8 Bereichen** (rund 75 Prüfpunkte) — von rechtlichen Pflichten
 bis zu Wachstumsfaktoren — und liefert pro Bereich eine Note (A–F) mit konkreten,
 priorisierbaren Handlungsempfehlungen.
 
@@ -95,6 +95,17 @@ Die Bewertungslogik (Strafpunkte je Schweregrad, Gewichtung der Bereiche) liegt
 zentral und gut kommentiert in [`scripts/engine/scoring.ts`](scripts/engine/scoring.ts)
 — dort lässt sich der Charakter des Reports (streng vs. fair) anpassen.
 
+## Bewertung
+
+Es gibt **keine gemeinsame Gesamtnote**. Rechtssicherheit und Wachstum werden
+getrennt ausgewiesen — gute Sichtbarkeit darf eine fehlende Pflichtangabe nicht
+ausgleichen. Ein kritischer Befund deckelt die Note des betroffenen Bereichs.
+
+**„Nicht geprüft" ist keine Note.** Konnte ein Bereich nicht gemessen werden
+(häufigster Fall: der Browser startet nicht), steht dort `nicht geprüft` statt
+einer Punktzahl. Der Exit-Code sagt dasselbe: `0` vollständig, `1` teilweise,
+`2` gescheitert.
+
 ## Grenzen
 
 - Tracker-/CMP-Listen sind nie vollständig; manche Seiten zeigen Bots eine Consent-Wall.
@@ -102,6 +113,17 @@ zentral und gut kommentiert in [`scripts/engine/scoring.ts`](scripts/engine/scor
 - Automatisierte WCAG-Tests decken ~30–50 % der Kriterien ab — manuelle Prüfung (Tastatur, Screenreader) bleibt für volle BFSG-Konformität nötig.
 - Domain-Ablaufdatum ist bei `.de`-Domains (DENIC) nicht öffentlich abrufbar.
 - Off-Site-Signale (Backlinks, Marken-Erwähnungen) werden nicht gemessen.
+- **Die rechtliche Anwendbarkeit wird nicht ermittelt.** Geprüft werden technische
+  Signale, keine Rechtslage: Ob das BFSG für einen Betreiber überhaupt gilt (es
+  trifft bestimmte Verbraucherdienste; Kleinstunternehmen sind bei
+  Dienstleistungen ausgenommen), ob eine Seite B2B oder B2C ist und in welchem
+  Land sie betrieben wird, steht dem Werkzeug nicht zur Verfügung. Die Befunde
+  sind Hinweise zum Nachsehen, keine Feststellung eines Verstoßes.
+- Performance ist **ein synthetischer Laborabruf**, kein Feldwert. Die offiziellen
+  Core Web Vitals (LCP, INP, CLS) werden am 75. Perzentil echter Besuche
+  bewertet; INP lässt sich ohne Interaktion nicht erheben und fehlt hier.
+- Die GEO-Regeln (Absatzlänge, Faktendichte, Definitionssätze, llms.txt) sind
+  **Erfahrungswerte, keine belegte Wissenschaft**. Sie taugen als Anregung.
 - Geprüft wird **eine** Seite, nicht die ganze Website: doppelte Titles, interne 404er und Klicktiefe bleiben deshalb außen vor.
 
 **Wichtig:** Dies ist eine automatisierte Prüfung und **ersetzt keine Rechtsberatung**.

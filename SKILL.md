@@ -50,7 +50,7 @@ npx tsx scripts/scan.ts <url> --json
 
 Ein Scan startet kurz Chromium und dauert ~5–20 Sekunden.
 
-## Was geprüft wird (8 Bereiche, rund 74 Prüfpunkte)
+## Was geprüft wird (8 Bereiche, rund 75 Prüfpunkte)
 
 **Rechtssicherheit & Risiko**
 1. **DSGVO** — Tracker und Cookies vor der Einwilligung, Cookie-Laufzeiten über 12 Monate,

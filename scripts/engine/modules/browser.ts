@@ -223,12 +223,12 @@ export async function runBrowserScan(url: string): Promise<BrowserScanResult> {
     } catch { /* axe optional → Content-Heuristik springt ein */ }
 
     // --- 1. Pre-Consent-Tracker erkennen ---
-    const hits = new Map<string, { name: string; note: string; us: boolean; urls: Set<string> }>();
+    const hits = new Map<string, { name: string; note: string; us: boolean; kategorie: string; cookielos: boolean; urls: Set<string> }>();
     for (const reqUrl of requestUrls) {
       for (const t of TRACKERS) {
         if (matchesAny(reqUrl, t.patterns)) {
           if (!hits.has(t.id))
-            hits.set(t.id, { name: t.name, note: t.note, us: t.usTransfer, urls: new Set() });
+            hits.set(t.id, { name: t.name, note: t.note, us: t.usTransfer, kategorie: t.category, cookielos: t.cookielos === true, urls: new Set() });
           hits.get(t.id)!.urls.add(new URL(reqUrl).host);
         }
       }
@@ -253,35 +253,59 @@ export async function runBrowserScan(url: string): Promise<BrowserScanResult> {
     }
 
     // Übrige Tracker zu einem Finding zusammenfassen.
-    if (hits.size > 0) {
-      const evidence: string[] = [];
-      let hasUs = false;
-      for (const [, h] of hits) {
-        evidence.push(`${h.name} (${[...h.urls].join(", ")})`);
-        if (h.us) hasUs = true;
-      }
+    // Nach rechtlicher Wirkung trennen, nicht alles in einen Topf.
+    //
+    // Vorher fasste EIN critical-Befund jeden Katalogtreffer zusammen — Google
+    // Ads stand dort neben jsDelivr, mit dem Satz "nach DSGVO/TDDDG unzulässig".
+    // Das ist in beide Richtungen falsch: Es dramatisiert ein CDN und verwässert
+    // ein Werbepixel. Maßgeblich ist, ob der Dienst auf das ENDGERÄT zugreift
+    // (§ 25 TDDDG) oder nur eine Verbindung zu einem Dritten aufbaut (Art. 6).
+    const einwilligungspflichtigeHits = [...hits.values()].filter(
+      (h) => (h.kategorie === "ads" || h.kategorie === "tagmanager" || h.kategorie === "analytics") && !h.cookielos
+    );
+    const cookielose = [...hits.values()].filter((h) => h.cookielos);
+
+    if (einwilligungspflichtigeHits.length > 0) {
+      const hasUs = einwilligungspflichtigeHits.some((h) => h.us);
       findings.push({
         id: "dsgvo.pre-consent-tracking",
         category: "dsgvo",
-        title: `${hits.size} Tracker feuern VOR der Einwilligung`,
+        title: `${einwilligungspflichtigeHits.length} Tracking-Dienst(e) starten VOR der Einwilligung`,
         status: "fail",
         severity: "critical",
         description:
-          "Diese Dienste werden geladen, bevor der Nutzer im Cookie-Banner zugestimmt hat. Das ist nach DSGVO/TDDDG unzulässig — Einwilligung muss vorher erfolgen." +
-          (hasUs ? " Mindestens ein Dienst überträgt Daten in die USA." : ""),
+          "Diese Dienste speichern Informationen auf dem Endgerät oder lesen sie aus (Cookies, Kennungen), bevor jemand zugestimmt hat. Dafür ist die Einwilligung vorher einzuholen." +
+          (hasUs ? " Mindestens einer überträgt Daten in die USA." : ""),
         recommendation:
-          "Tracker erst NACH aktiver Einwilligung laden (z.B. über ein korrekt konfiguriertes Consent-Management-Tool).",
-        legalRef: "Art. 6 Abs. 1 DSGVO, § 25 TDDDG (ehem. TTDSG)",
-        evidence,
+          "Diese Skripte erst nach aktiver Einwilligung ausführen — Blockade vorschalten, nicht nur einen Hinweis anzeigen.",
+        legalRef: "§ 25 Abs. 1 TDDDG, Art. 6 Abs. 1 DSGVO",
+        evidence: einwilligungspflichtigeHits.map((h) => `${h.name} (${[...h.urls].join(", ")})`),
       });
-    } else {
+    }
+
+    if (cookielose.length > 0) {
+      findings.push({
+        id: "dsgvo.cookieless-analytics",
+        category: "dsgvo",
+        title: `Cookieloses Analytics im Einsatz (${cookielose.map((h) => h.name).join(", ")})`,
+        status: "warn",
+        severity: "low",
+        description:
+          "Dieses Werkzeug arbeitet ohne Cookies und ohne Zugriff auf das Endgerät. § 25 TDDDG greift dann nicht; die Verarbeitung der IP-Adresse bleibt aber eine Verarbeitung nach Art. 6 DSGVO und gehört in die Datenschutzerklärung.",
+        recommendation: "In der Datenschutzerklärung benennen (Zweck, Rechtsgrundlage, Speicherdauer). Eine Einwilligung ist dafür nach überwiegender Auffassung nicht erforderlich.",
+        legalRef: "Art. 6 Abs. 1 lit. f DSGVO",
+        evidence: cookielose.map((h) => `${h.name} (${[...h.urls].join(", ")})`),
+      });
+    }
+
+    if (einwilligungspflichtigeHits.length === 0) {
       findings.push({
         id: "dsgvo.no-pre-consent-tracking",
         category: "dsgvo",
-        title: "Keine Tracker vor Einwilligung erkannt",
+        title: "Keine einwilligungspflichtigen Tracker vor der Zustimmung",
         status: "pass",
         severity: "info",
-        description: "Beim Laden wurden keine bekannten Tracking-Dienste ohne Zustimmung aktiv.",
+        description: "Beim Laden wurde kein Dienst aktiv, der ohne Einwilligung auf das Endgerät zugreift.",
       });
     }
 
@@ -679,13 +703,24 @@ export async function runBrowserScan(url: string): Promise<BrowserScanResult> {
       axeRan,
     };
   } catch (err) {
+    // Der volle Fehlertext gehört ins Log, nicht in den Report: Playwright
+    // liefert dort absolute Pfade des Servers mit ("/root/.cache/ms-playwright/…").
+    // Nach außen nur die Art des Fehlers.
+    const roh = (err as Error).message;
+    console.error(`Browser-Scan fehlgeschlagen für ${url}: ${roh}`);
+    const grund = /timeout|Timeout/.test(roh)
+      ? "Die Seite hat nicht rechtzeitig geantwortet."
+      : /net::ERR_|ENOTFOUND|ECONNREFUSED|certificate|SSL/.test(roh)
+      ? "Die Seite war nicht erreichbar oder hat die Verbindung abgelehnt."
+      : "Der Browser konnte die Seite nicht laden.";
     findings.push({
-      id: "dsgvo.scan-error",
+      id: "scan.browser-failed",
       category: "dsgvo",
-      title: "Browser-Scan fehlgeschlagen",
-      status: "warn",
+      title: "Browser-Prüfung nicht möglich",
+      status: "fail",
       severity: "info",
-      description: `Die Seite konnte nicht vollständig im Browser geladen werden: ${(err as Error).message}`,
+      description: `${grund} Alle Prüfungen, die die gerenderte Seite brauchen, konnten deshalb NICHT ausgeführt werden — die betroffenen Bereiche sind im Bericht als „nicht geprüft" ausgewiesen und bekommen keine Note.`,
+      recommendation: "Erreichbarkeit prüfen und den Scan wiederholen. Bleibt es dabei, blockiert die Seite womöglich automatisierte Zugriffe.",
     });
     return { findings, html: "", finalUrl: url, title: "", mobil: null, bilder: [], requestHosts: [], requestUrls: [], cookies: [], perf: null, axeViolations: [], axeRan: false };
   } finally {

@@ -13,6 +13,16 @@ export interface TrackerSignature {
   category: "analytics" | "ads" | "social" | "fonts" | "maps" | "video" | "cdn" | "consent" | "tagmanager";
   // Werden bei diesem Dienst typischerweise Daten in die USA übertragen?
   usTransfer: boolean;
+  // true = arbeitet nachweislich ohne Cookies/Endgeräte-Speicher.
+  //
+  // Der Unterschied ist rechtlich entscheidend und wurde vorher nicht gemacht:
+  // § 25 TDDDG betrifft das SPEICHERN VON INFORMATIONEN AUF DEM ENDGERÄT und
+  // den Zugriff darauf — Cookies, localStorage, Fingerprinting. Die bloße
+  // Übertragung einer IP-Adresse beim Laden einer Ressource fällt NICHT
+  // darunter; sie ist eine Verarbeitung nach Art. 6 DSGVO. Ein cookieloses
+  // Analytics-Werkzeug und ein Werbepixel in denselben Befund zu werfen, ist
+  // fachlich falsch und beschädigt die Glaubwürdigkeit des ganzen Berichts.
+  cookielos?: boolean;
   // Kurzbegründung für den Report
   note: string;
 }
@@ -23,7 +33,7 @@ export const TRACKERS: TrackerSignature[] = [
   { id: "google-tag-manager", name: "Google Tag Manager", patterns: ["googletagmanager.com/gtm.js", "googletagmanager.com/gtag/js"], category: "tagmanager", usTransfer: true, note: "Lädt weitere Skripte nach — oft Einfallstor für Tracker vor Einwilligung." },
   { id: "matomo", name: "Matomo", patterns: ["matomo.php", "piwik.php", "matomo.js", "piwik.js"], category: "analytics", usTransfer: false, note: "Analytics. DSGVO-freundlicher, aber bei Cookie-Nutzung einwilligungspflichtig." },
   { id: "hotjar", name: "Hotjar", patterns: ["hotjar.com", "hotjar.io", "static.hj"], category: "analytics", usTransfer: true, note: "Session-Recording / Heatmaps. Einwilligungspflichtig." },
-  { id: "plausible", name: "Plausible", patterns: ["plausible.io"], category: "analytics", usTransfer: false, note: "Cookieloses Analytics (EU). Meist ohne Einwilligung nutzbar." },
+  { id: "plausible", name: "Plausible", patterns: ["plausible.io"], category: "analytics", usTransfer: false, cookielos: true, note: "Cookieloses Analytics (EU). Meist ohne Einwilligung nutzbar." },
 
   // --- Ads ---
   { id: "google-ads", name: "Google Ads / DoubleClick", patterns: ["googleadservices.com", "doubleclick.net", "googlesyndication.com", "google.com/ads", "/pagead/"], category: "ads", usTransfer: true, note: "Werbe-Tracking. Strikt einwilligungspflichtig." },

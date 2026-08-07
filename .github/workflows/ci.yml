@@ -1,0 +1,25 @@
+# Prüft bei jedem Push, was sich ohne Netzwerkzugriff prüfen lässt:
+# Typen und die Fixture-Tests. Ein echter Scan gehört bewusst NICHT hierher —
+# er würde fremde Websites aus der CI heraus abrufen.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Playwright-Browser werden hier nicht gebraucht: Die Tests laufen ohne
+      # Chromium. Das spart in der CI mehrere Minuten je Lauf.
+      - run: npm ci --ignore-scripts
+      - name: Typen prüfen
+        run: npx tsc --noEmit -p tsconfig.json
+      - name: Tests
+        run: npm test

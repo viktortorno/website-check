@@ -2,7 +2,15 @@
 // (Core Web Vitals + Seitengewicht). Ladezeit ist gleichzeitig SEO-
 // Rankingfaktor, Conversion-Hebel und das, was Besucher unmittelbar spüren.
 //
-// Schwellenwerte orientieren sich an Google Core Web Vitals / Lighthouse.
+// Schwellenwerte orientieren sich an den Google-Richtwerten (Lighthouse).
+//
+// Ehrliche Einordnung, die im Bericht auch so steht: Das hier ist EIN
+// synthetischer Laborabruf aus einem Rechenzentrum — nicht das, woran Google
+// tatsächlich misst. Die offiziellen Core Web Vitals sind LCP, INP und CLS,
+// bewertet am 75. Perzentil ECHTER Besuche (CrUX). INP lässt sich ohne
+// Interaktion gar nicht erheben und fehlt hier vollständig; TTFB ist kein
+// Core Web Vital, sondern eine Diagnosegröße. Deshalb wird in diesem Modul
+// nirgends behauptet, die Core Web Vitals seien "geprüft".
 
 import { Finding } from "../types";
 import { PerfMetrics, BildMass } from "./browser";
@@ -19,7 +27,7 @@ export function runPerformance(perf: PerfMetrics | null, bilder: BildMass[] = []
     if (perf.lcp <= 2500) {
       findings.push({ id: "perf.lcp-good", category: "performance", title: `Schneller Seitenaufbau (LCP ${fmtMs(perf.lcp)})`, status: "pass", severity: "info", description: "Das größte Inhaltselement erscheint schnell — Google bewertet LCP ≤ 2,5 s als „gut”." });
     } else if (perf.lcp <= 4000) {
-      findings.push({ id: "perf.lcp-medium", category: "performance", title: `Seitenaufbau verbesserungswürdig (LCP ${fmtMs(perf.lcp)})`, status: "warn", severity: "medium", description: "Das größte Inhaltselement erscheint erst nach 2,5–4 s. Im Grenzbereich von Googles Core Web Vitals.", recommendation: "Größtes Element (oft Hero-Bild) optimieren: moderne Formate (WebP/AVIF), Preload, weniger Render-blockierendes CSS/JS." });
+      findings.push({ id: "perf.lcp-medium", category: "performance", title: `Seitenaufbau verbesserungswürdig (LCP ${fmtMs(perf.lcp)})`, status: "warn", severity: "medium", description: "Das größte Inhaltselement erscheint erst nach 2,5–4 s. Im Grenzbereich des Google-Richtwerts. Gemessen an einem einzelnen Laborabruf, nicht an echten Besuchern.", recommendation: "Größtes Element (oft Hero-Bild) optimieren: moderne Formate (WebP/AVIF), Preload, weniger Render-blockierendes CSS/JS." });
     } else {
       findings.push({ id: "perf.lcp-bad", category: "performance", title: `Langsamer Seitenaufbau (LCP ${fmtMs(perf.lcp)})`, status: "fail", severity: "high", description: "Das größte Inhaltselement erscheint erst nach über 4 s. Das kostet Rankings und Besucher (jede Sekunde senkt die Conversion messbar).", recommendation: "Bilder komprimieren & lazy-loaden, Server-Antwortzeit senken, Render-blockierende Ressourcen entfernen, Caching/CDN nutzen." });
     }

@@ -11,7 +11,7 @@
 // Reihenfolge der Arbeit stützen ("was bringt am schnellsten am meisten?"),
 // nicht ein Angebot ersetzen — genau so werden sie im Report auch benannt.
 
-import { Category, Finding, ScanReport } from "./types";
+import { Category, CategoryGroup, CATEGORY_GROUP, Finding, ScanReport } from "./types";
 import { buildScores } from "./scoring";
 
 export type Aufwand = "minuten" | "stunde" | "halber-tag" | "projekt";
@@ -177,8 +177,12 @@ export interface Massnahme {
 
 export interface Fahrplan {
   schritte: Massnahme[];
+  // Wirkung auf die Gruppe, in der die Schritte liegen — es gibt keine
+  // gemeinsame Note mehr, in der man den Gewinn ausdrücken könnte.
   punkteGesamt: number;
-  neuerScore: number;
+  vorher: number | null;
+  neuerScore: number | null;
+  gruppe: CategoryGroup;
 }
 
 /**
@@ -197,23 +201,29 @@ export interface Fahrplan {
 export function baueFahrplan(report: ScanReport, maxSchritte = 5): Fahrplan {
   const alle = report.categories.flatMap((c) => c.findings);
   const offen = alle.filter((f) => f.status !== "pass" && f.severity !== "info");
-  const basis = report.overallScore;
-
   const basisKategorie = new Map(report.categories.map((c) => [c.category, c.score]));
+  const basisGruppe = new Map(report.gruppen.map((g) => [g.gruppe, g.score]));
+
+  // Alle Kategorien, die im Bericht bewertet wurden — nur die dürfen in die
+  // Neuberechnung, sonst würde ein nicht geprüfter Bereich plötzlich als
+  // "geprüft" wieder auftauchen.
+  const gelaufen = new Set<Category>(
+    report.categories.filter((c) => c.score !== null).map((c) => c.category)
+  );
 
   const bewertet: Massnahme[] = offen.map((f) => {
     const ohne = alle.filter((x) => x !== f);
-    const neu = buildScores(ohne);
-    const kategorieNeu = neu.categories.find((c) => c.category === f.category)?.score ?? 0;
+    const neu = buildScores(ohne, gelaufen, true);
+    const gruppe = CATEGORY_GROUP[f.category];
+    const kategorieNeu = neu.categories.find((c) => c.category === f.category)?.score ?? null;
+    const gruppeNeu = neu.gruppen.find((g) => g.gruppe === gruppe)?.score ?? null;
+    const basisK = basisKategorie.get(f.category);
+    const basisG = basisGruppe.get(gruppe);
     return {
       finding: f,
       aufwand: aufwandVon(f),
-      punkte: neu.overallScore - basis,
-      // Der Gesamtscore ist auf ganze Punkte gerundet — eine Kleinigkeit in
-      // einer gering gewichteten Kategorie verschwindet darin auf 0. Der
-      // Gewinn IN der Kategorie ist dagegen immer sichtbar und für den
-      // Betreiber ohnehin die greifbarere Zahl ("SEO von 86 auf 90").
-      punkteKategorie: kategorieNeu - (basisKategorie.get(f.category) ?? 0),
+      punkte: gruppeNeu !== null && basisG !== null && basisG !== undefined ? gruppeNeu - basisG : 0,
+      punkteKategorie: kategorieNeu !== null && basisK !== null && basisK !== undefined ? kategorieNeu - basisK : 0,
     };
   });
 
@@ -232,9 +242,24 @@ export function baueFahrplan(report: ScanReport, maxSchritte = 5): Fahrplan {
 
   const schritte = sortiert.slice(0, maxSchritte);
 
-  // Gemeinsamer Effekt: alle ausgewählten Befunde auf einmal entfernen.
-  const behoben = new Set(schritte.map((s) => s.finding));
-  const neuerScore = buildScores(alle.filter((f) => !behoben.has(f))).overallScore;
+  // Die Zusammenfassung bezieht sich auf die Gruppe, in der die MEISTEN
+  // Schritte liegen — dort wird der Gewinn sichtbar.
+  const gruppe: CategoryGroup =
+    schritte.filter((s) => CATEGORY_GROUP[s.finding.category] === "compliance").length >=
+    schritte.filter((s) => CATEGORY_GROUP[s.finding.category] === "growth").length
+      ? "compliance"
+      : "growth";
 
-  return { schritte, punkteGesamt: neuerScore - basis, neuerScore };
+  const behoben = new Set(schritte.map((s) => s.finding));
+  const nachher = buildScores(alle.filter((f) => !behoben.has(f)), gelaufen, true)
+    .gruppen.find((g) => g.gruppe === gruppe)?.score ?? null;
+  const vorher = basisGruppe.get(gruppe) ?? null;
+
+  return {
+    schritte,
+    punkteGesamt: nachher !== null && vorher !== null ? nachher - vorher : 0,
+    vorher,
+    neuerScore: nachher,
+    gruppe,
+  };
 }

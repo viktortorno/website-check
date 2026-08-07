@@ -7,10 +7,23 @@
 import { Finding } from "../types";
 
 // Bekannte Chat-/Bot-Widgets (oft KI-gestützt → Kennzeichnungspflicht).
-const CHAT_WIDGETS = [
+// Chat-Werkzeuge, getrennt nach dem, was sie tatsächlich sind.
+//
+// Der AI Act verlangt Transparenz, wenn Menschen mit einem KI-SYSTEM
+// interagieren. Ein von Menschen bedienter Live-Chat ist keins. Intercom,
+// Zendesk & Co. sind in erster Linie Support-Postfächer — sie pauschal als
+// „möglicher KI-Chatbot" zu melden, erzeugt einen Rechtsverdacht, für den es
+// keinen Anhaltspunkt gibt.
+const BOT_PLATTFORMEN = [
+  // Plattformen, deren Zweck automatisierte Dialoge sind.
+  "manychat", "voiceflow", "botpress", "landbot", "chatfuel", "dialogflow",
+  "rasa.", "kore.ai", "ada.cx", "intercom-fin", "convai-widget",
+];
+const LIVECHAT_PLATTFORMEN = [
+  // Plattformen, die überwiegend von Menschen bedient werden. Ein KI-Modus
+  // ist dort zubuchbar, aber nicht die Voreinstellung.
   "intercom", "drift.com", "tidio", "crisp.chat", "tawk.to", "livechat",
-  "zendesk", "hubspot", "manychat", "voiceflow", "botpress", "landbot",
-  "userlike", "smartsupp", "chatwoot",
+  "zendesk", "hubspot", "userlike", "smartsupp", "chatwoot",
 ];
 
 export function runContent(html: string, finalUrl: string, axeRan = false): Finding[] {
@@ -80,11 +93,24 @@ export function runContent(html: string, finalUrl: string, axeRan = false): Find
   } // Ende Fallback-Heuristik (!axeRan)
 
   // ---------- EU AI Act: Chatbot-Transparenz ----------
-  const widget = CHAT_WIDGETS.find((w) => lower.includes(w));
+  const botPlattform = BOT_PLATTFORMEN.find((w) => lower.includes(w));
+  const livechat = LIVECHAT_PLATTFORMEN.find((w) => lower.includes(w));
+  const widget = botPlattform ?? livechat;
   if (widget) {
     const disclosed = /(ki-?(assistent|bot|chat)|künstliche intelligenz|automatisierter (chat|assistent)|virtuelle[rn]? assistent|ai assistant|powered by ai|chatbot)/i.test(html);
     if (disclosed) {
       findings.push({ id: "ai-act.chatbot-disclosed", category: "ai-act", title: "Chatbot vorhanden & gekennzeichnet", status: "pass", severity: "info", description: `Chat-Widget erkannt (${widget}) mit Hinweis auf KI/Automatisierung.` });
+    } else if (!botPlattform) {
+      // Live-Chat ohne KI-Hinweis: Das ist der Normalfall und kein Mangel.
+      findings.push({
+        id: "ai-act.livechat-present",
+        category: "ai-act",
+        title: "Chat-Werkzeug erkannt (Live-Chat)",
+        status: "pass",
+        severity: "info",
+        description: `Es wurde ein Chat-Werkzeug gefunden (${widget}). Solche Postfächer werden überwiegend von Menschen bedient — dann besteht keine Transparenzpflicht nach Art. 50 AI Act.`,
+        recommendation: "Nur falls dort ein KI-Modus aktiv ist: an der Stelle der Interaktion kenntlich machen, dass ein System antwortet.",
+      });
     } else {
       findings.push({ id: "ai-act.chatbot-undisclosed", category: "ai-act", title: "Chatbot ohne klare KI-Kennzeichnung", status: "warn", severity: "medium", description: `Ein Chat-Widget wurde erkannt (${widget}), aber kein eindeutiger Hinweis, dass es sich um ein KI-/automatisiertes System handelt.`, recommendation: "Falls KI-gestützt: Nutzer transparent darüber informieren, dass sie mit einem KI-System interagieren.", legalRef: "Art. 50 EU AI Act (Transparenzpflicht, ab 08/2026)" });
     }

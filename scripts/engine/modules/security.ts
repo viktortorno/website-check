@@ -219,6 +219,37 @@ export async function runSecurity(finalUrl: string): Promise<Finding[]> {
   }
 
   if (headers) {
+    // Ein gesetzter Header ist nicht dasselbe wie ein wirksamer Header.
+    // `Strict-Transport-Security: max-age=0` schaltet den Schutz sogar
+    // ausdrücklich AB — vorher galt das als "vorhanden".
+    const hsts = headers.get("strict-transport-security");
+    if (hsts) {
+      const maxAge = Number(/max-age\s*=\s*(\d+)/i.exec(hsts)?.[1] ?? "0");
+      if (maxAge === 0) {
+        findings.push({
+          id: "security.hsts-disabled",
+          category: "security",
+          title: "HSTS ist gesetzt, aber abgeschaltet (max-age=0)",
+          status: "fail",
+          severity: "high",
+          description: "Der Header Strict-Transport-Security steht im Kopf, weist den Browser mit max-age=0 aber ausdrücklich an, die HTTPS-Pflicht zu vergessen. Das ist kein Schutz, sondern dessen Aufhebung.",
+          recommendation: "max-age auf mindestens 15552000 (180 Tage) setzen.",
+          evidence: [hsts],
+        });
+      } else if (maxAge < 15552000) {
+        findings.push({
+          id: "security.hsts-short",
+          category: "security",
+          title: `HSTS mit kurzer Laufzeit (${Math.round(maxAge / 86400)} Tage)`,
+          status: "warn",
+          severity: "low",
+          description: "Die HTTPS-Pflicht gilt nur für einen kurzen Zeitraum. Empfohlen sind mindestens 180 Tage, damit der Schutz auch bei seltenen Besuchen greift.",
+          recommendation: "max-age=15552000 oder höher setzen.",
+          evidence: [hsts],
+        });
+      }
+    }
+
     for (const [key, cfg] of Object.entries(EXPECTED_HEADERS)) {
       if (headers.has(key)) {
         // CSP-Qualität bewerten: vorhanden ist gut, aber unsafe-* hebeln den Schutz aus.

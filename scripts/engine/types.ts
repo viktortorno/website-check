@@ -102,13 +102,39 @@ export interface Finding {
 
 export interface CategoryResult {
   category: Category;
-  score: number; // 0–100
-  grade: string; // A–F (von der Scoring-Engine)
+  // null = NICHT GEPRÜFT. Der wichtigste Wert in diesem Typ.
+  //
+  // Vorher war score immer eine Zahl, und eine Kategorie ohne jede ausgeführte
+  // Prüfung landete bei 100 — weil das Scoring bei 100 startet und nur abzieht.
+  // Fiel der Browser aus, meldete das Werkzeug sechs Kategorien mit „A" und
+  // eine Gesamtnote von 100/100. „Nicht gemessen" wurde damit zu „einwandfrei".
+  // Ein Audit-Werkzeug darf diesen Zustand nicht kennen; deshalb null.
+  score: number | null;
+  grade: string | null;
   findings: Finding[];
-  checks: number; // Anzahl Prüfpunkte in dieser Kategorie
-  // 0–1: wie belastbar die Aussage ist (Prüfdichte). Dünn belegte Kategorien
-  // zählen anteilig weniger im Gesamtscore — siehe scoring.ts.
+  checks: number; // tatsächlich ausgeführte Prüfungen (0 = nicht geprüft)
+  // 0–1: wie belastbar die Aussage ist (Prüfdichte gegen den Sollwert).
   confidence: number;
+}
+
+// Wie vollständig ist dieser Scan?
+//   complete — alle Module liefen
+//   partial  — einzelne Module fielen aus; Teilaussagen gelten, Gesamtnote nicht
+//   failed   — der Browser-Scan scheiterte; es gibt praktisch keine Aussage
+export type ScanStatus = "complete" | "partial" | "failed";
+
+// Zwei getrennte Bewertungen statt einer gemeinsamen Note.
+//
+// Eine gemeinsame Note über Recht und Marketing ist inhaltlich falsch: Gute
+// SEO-Werte können fehlende Pflichtangaben rechnerisch ausgleichen, und genau
+// das darf nicht passieren. Rechtliches Risiko und Wachstum sind verschiedene
+// Fragen an verschiedene Adressaten.
+export interface GruppenErgebnis {
+  gruppe: CategoryGroup;
+  score: number | null;
+  grade: string | null;
+  // true = ein kritischer Befund deckelt die Note (siehe scoring.ts).
+  gedeckelt: boolean;
 }
 
 // Einordnung gegenüber allen bisher geprüften Seiten. Optional, weil sie erst
@@ -125,8 +151,10 @@ export interface ScanReport {
   finalUrl: string; // nach Redirects
   scannedAt: string; // ISO-Timestamp
   durationMs: number;
-  overallScore: number; // 0–100
-  overallGrade: string;
+  scanStatus: ScanStatus;
+  // Getrennt nach Rechtssicherheit und Wachstum. Bei einem unvollständigen
+  // Scan bleiben die betroffenen Werte null statt geschätzt zu werden.
+  gruppen: GruppenErgebnis[];
   categories: CategoryResult[];
   cached?: boolean; // true = Ergebnis kam aus dem Kurz-Cache
   error?: string;

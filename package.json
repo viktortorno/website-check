@@ -7,7 +7,9 @@
   "scripts": {
     "scan": "tsx scripts/scan.ts",
     "setup": "playwright install chromium",
-    "postinstall": "playwright install chromium"
+    "postinstall": "playwright install chromium",
+    "test": "tsx --test test/*.test.ts",
+    "lint": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "axe-core": "^4.12.1",

@@ -131,7 +131,10 @@ export async function runGeo(html: string, finalUrl: string): Promise<Finding[]>
     fetchText(`${origin}/llms.txt`),
     fetchText(`${origin}/sitemap.xml`),
     fetchText(finalUrl, 8000, BROWSER_UA, 4_000_000),
-    fetchText(finalUrl, 8000, "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; GPTBot/1.2; +https://openai.com/gptbot"),
+    // OAI-SearchBot, nicht GPTBot: Für die Sichtbarkeit in ChatGPT Search ist
+    // dieser Bot zuständig. GPTBot betrifft primär die Nutzung als
+    // Trainingsmaterial — eine Sperre dort sagt über Zitierbarkeit wenig aus.
+    fetchText(finalUrl, 8000, "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; OAI-SearchBot/1.0; +https://openai.com/searchbot"),
     fetchText(finalUrl, 8000, "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot"),
   ]);
 
@@ -266,7 +269,7 @@ export async function runGeo(html: string, finalUrl: string): Promise<Finding[]>
   // robots.txt ist eine Bitte, die WAF ist eine Tür. Cloudflare & Co. blocken
   // KI-Bots oft per Voreinstellung, während die robots.txt sie erlaubt.
   const botAbrufe = [
-    { name: "GPTBot (OpenAI)", res: botGpt },
+    { name: "OAI-SearchBot (ChatGPT Search)", res: botGpt },
     { name: "PerplexityBot", res: botPpl },
   ];
   const gesperrt = botAbrufe.filter((b) => [401, 403, 405, 406, 418, 429, 451, 503].includes(b.res.status));

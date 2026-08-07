@@ -161,12 +161,21 @@ export async function runAiAct(html: string, finalUrl: string, requestUrls: stri
     findings.push({
       id: "ai-act.ai-services", category: "ai-act",
       title: `${dienste.length} KI-Dienst(e) eingebunden`,
-      status: kennzeichnungVorhanden ? "pass" : "warn",
-      severity: kennzeichnungVorhanden ? "info" : "low",
-      description: kennzeichnungVorhanden
-        ? "Die Seite bindet KI-Dienste ein und weist auf KI-Einsatz hin."
-        : "Die Seite spricht KI-Dienste direkt an. Wo Nutzer mit einem solchen System interagieren, müssen sie darüber informiert werden — es sei denn, das ist aus dem Zusammenhang offensichtlich.",
-      recommendation: kennzeichnungVorhanden ? undefined : "An der Stelle der Interaktion kenntlich machen, dass ein KI-System antwortet, und die Verarbeitung in der Datenschutzerklärung beschreiben.",
+      // Bewusst KEIN "pass" allein wegen eines Hinweises irgendwo auf der Seite.
+      //
+      // Art. 50 Abs. 1 verlangt die Information rechtzeitig — spätestens bei
+      // der ersten Interaktion. Ein Satz im Impressum oder in der
+      // Datenschutzerklärung erfüllt das nicht. Ob der Hinweis am richtigen
+      // Ort steht, kann diese Prüfung nicht feststellen; deshalb bleibt es ein
+      // Hinweis zum Nachsehen statt eines Freispruchs.
+      status: "warn",
+      severity: "low",
+      description:
+        "Die Seite spricht KI-Dienste direkt an. Wer mit einem solchen System interagiert, muss spätestens bei der ersten Interaktion darüber informiert werden — nicht erst in der Datenschutzerklärung." +
+        (kennzeichnungVorhanden
+          ? " Ein KI-Hinweis wurde auf der Seite gefunden; ob er an der Stelle der Interaktion steht, lässt sich automatisch nicht feststellen."
+          : " Ein solcher Hinweis wurde nicht gefunden."),
+      recommendation: "An der Stelle der Interaktion kenntlich machen, dass ein KI-System antwortet, und die Verarbeitung in der Datenschutzerklärung beschreiben.",
       legalRef: "Art. 50 Abs. 1 EU AI Act",
       evidence: dienste.map((d) => d.name),
     });

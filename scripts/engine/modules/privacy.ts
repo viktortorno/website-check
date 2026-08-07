@@ -59,11 +59,17 @@ export function runPrivacy(
       status: "fail",
       severity: usAnteil > 0 ? "high" : "medium",
       description:
-        "Diese Dienste werden beim Seitenaufruf kontaktiert, bevor der Besucher zugestimmt hat. Dabei wird mindestens seine IP-Adresse übertragen." +
+        "Diese Dienste werden beim Seitenaufruf kontaktiert, ohne dass der Besucher gefragt wurde. Dabei wird mindestens seine IP-Adresse an den Anbieter übertragen — dafür braucht es eine Rechtsgrundlage und einen Hinweis in der Datenschutzerklärung." +
         (usAnteil > 0 ? ` ${usAnteil} davon in die USA — dafür braucht es eine tragfähige Grundlage und einen Hinweis in der Datenschutzerklärung.` : ""),
       recommendation:
         "Einbettungen erst nach Klick laden (Zwei-Klick-Lösung), Schriften und Bibliotheken lokal hosten, YouTube auf youtube-nocookie.com umstellen.",
-      legalRef: "Art. 6 Abs. 1, Art. 44 ff. DSGVO, § 25 TDDDG",
+      // Bewusst OHNE § 25 TDDDG: Der betrifft das Speichern von Informationen
+      // auf dem Endgerät und den Zugriff darauf. Beim bloßen Nachladen einer
+      // fremden Ressource wird eine Verbindung aufgebaut und dabei die IP
+      // übertragen — das ist Art. 6 DSGVO. Setzt die Einbettung zusätzlich
+      // Cookies (YouTube ohne nocookie, reCAPTCHA), greift § 25 zusätzlich;
+      // das meldet dann der Cookie-Befund aus dem Browser-Modul.
+      legalRef: "Art. 6 Abs. 1, Art. 44 ff. DSGVO",
       evidence: gefunden.map((g) => `${g.name} — ${g.note}`),
     });
   } else {
