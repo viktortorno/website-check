@@ -265,41 +265,212 @@ export async function runBrowserScan(url: string): Promise<BrowserScanResult> {
       });
     }
 
-    // --- 3. Consent-Banner / CMP vorhanden? ---
+    // --- 3. Consent-Banner / CMP: im echten DOM statt per Wortsuche ---
+    //
+    // Vorher stand hier eine reine Textsuche über das rohe HTML: ein Wort aus
+    // {cookie, consent, datenschutz, …} irgendwo, ein Wort aus {akzeptier,
+    // accept, …} irgendwo sonst — fertig war "Banner vermutlich vorhanden".
+    // Beide Wörter stehen auf praktisch jeder deutschen Seite, ohne dass es
+    // einen Banner gäbe: "Datenschutz" im Fußzeilenlink und "accept" als
+    // Teilstring in `acceptedAnswer` (FAQ-JSON-LD), `accept-charset` (jedes
+    // WordPress-Suchformular) oder `Accept-Encoding` in irgendeinem Skript.
+    // Der Befund kam deshalb fast immer — und sagte nichts aus.
+    //
+    // Jetzt drei belastbare Signale statt zweier zusammenhangloser Wörter:
+    //   a) CMP-Signatur in den geladenen URLs (unverändert),
+    //   b) globale CMP-API im Seitenkontext (window.__tcfapi, Cookiebot, …) —
+    //      das ist ein Beweis, kein Indiz,
+    //   c) ein SICHTBARES Element, das Cookie-Text und einen anklickbaren Knopf
+    //      mit Akzeptier-Beschriftung zusammen enthält.
     const allText = (html + " " + requestUrls.join(" ")).toLowerCase();
     const cmp = CMP_SIGNATURES.find((c) => matchesAny(allText, c.patterns));
-    const looksLikeBanner =
-      /cookie|consent|datenschutz|zustimm|einwillig/i.test(html) &&
-      /(akzeptier|zustimm|accept|einverstanden|alle erlauben)/i.test(html);
 
-    if (cmp) {
+    // Diese Funktion läuft IM BROWSER, und zwar in jedem Frame einzeln (siehe
+    // unten) — Sourcepoint, Didomi & Co. rendern ihr Banner in einem fremden
+    // iframe (cmp.heise.de, privacy-mgmt.com). Wer nur das Hauptdokument
+    // durchsucht, sieht davon nichts.
+    const erkenneConsent = () => {
+      // Muss die ERSTE Anweisung bleiben: esbuild (tsx, Tests) schreibt benannte
+      // Funktionen zu `__name(fn, "name")` um. Dieser Helfer existiert nur im
+      // Node-Bundle — im Seitenkontext stirbt die Auswertung sonst sofort mit
+      // "ReferenceError: __name is not defined", und zwar für jeden Frame.
+      const g = globalThis as unknown as Record<string, unknown>;
+      if (typeof g.__name !== "function") g.__name = (f: unknown) => f;
+
+      // Beschriftungen, mit denen eingewilligt wird. Bewusst eng: die Prüfung
+      // läuft nur gegen den TEXT EINES KNOPFES, nicht gegen die ganze Seite.
+      const AKZEPT = /^(alle\s+)?(cookies?\s+)?(akzeptier|zustimm|einverstanden|annehmen|erlauben|zulassen|auswahl bestätigen|accept|agree|allow|got it)|^(ok|verstanden|alles klar)\b/i;
+      // Worum es im umgebenden Kasten gehen muss. "datenschutz" allein reicht
+      // NICHT — genau das steht in jeder Fußzeile.
+      const THEMA = /\bcookies?\b|einwillig|zustimmung|consent|datenschutz-?einstellung|privatsphäre-?einstellung|\btracking\b/i;
+
+      const w = window as unknown as Record<string, unknown>;
+      const apis: string[] = [];
+      // IAB-TCF-Schnittstelle — der De-facto-Standard, den jedes größere
+      // Consent-Tool bereitstellt, egal welcher Anbieter dahintersteht.
+      if (typeof w.__tcfapi === "function") apis.push("IAB TCF v2");
+      else if (typeof w.__cmp === "function") apis.push("IAB TCF v1");
+      if (w.Cookiebot || w.CookieConsent) apis.push("Cookiebot/CookieConsent");
+      if (w.UC_UI || w.usercentrics || w.__ucCmp) apis.push("Usercentrics");
+      if (w.borlabsCookie || w.BorlabsCookie) apis.push("Borlabs Cookie");
+      if (w.OneTrust || w.Optanon || typeof w.OptanonWrapper === "function") apis.push("OneTrust");
+      if (w.cookieyes || w.CookieYes || w.CookieScript) apis.push("CookieYes/CookieScript");
+      if (w.klaro || w.klaroConfig) apis.push("Klaro");
+      if (w.cmplz_cookie_data || w.complianz) apis.push("Complianz");
+      if (w.cookieconsent || w.CookieInformation) apis.push("Cookie Information");
+
+      const sichtbar = (n: Element): boolean => {
+        const r = n.getBoundingClientRect();
+        if (r.width < 40 || r.height < 20) return false;
+        const s = getComputedStyle(n);
+        return s.visibility !== "hidden" && s.display !== "none" && parseFloat(s.opacity || "1") > 0.05;
+      };
+      // Liegt der Kasten ÜBER dem Inhalt? Kein Ausschlusskriterium, aber ein
+      // starkes Zusatzindiz — und für den Bericht die anschaulichste Evidenz.
+      const ueberlagert = (n: Element): boolean => {
+        let x: Element | null = n;
+        for (let t = 0; x && t < 6; t++, x = x.parentElement) {
+          const s = getComputedStyle(x);
+          if (s.position === "fixed" || s.position === "sticky") return true;
+          if (x.getAttribute("role") === "dialog" || x.hasAttribute("aria-modal")) return true;
+          if (parseInt(s.zIndex || "0", 10) >= 100) return true;
+        }
+        return false;
+      };
+
+      const klickbar = document.querySelectorAll<HTMLElement>(
+        'button, a, [role="button"], input[type="button"], input[type="submit"]'
+      );
+      for (const el of klickbar) {
+        const label = (
+          el.innerText || (el as HTMLInputElement).value || el.getAttribute("aria-label") || ""
+        ).trim().replace(/\s+/g, " ");
+        if (!label || label.length > 40 || !AKZEPT.test(label)) continue;
+        if (!sichtbar(el)) continue;
+
+        // Vom Knopf nach oben laufen, bis ein Vorfahr wirklich vom Thema
+        // handelt. Genau dieser Zusammenhang fehlte der alten Prüfung.
+        let node: Element | null = el.parentElement;
+        for (let tiefe = 0; node && tiefe < 8; tiefe++, node = node.parentElement) {
+          const txt = ((node as HTMLElement).innerText || "").slice(0, 3000);
+          if (!THEMA.test(txt)) continue;
+          if (!sichtbar(node)) break;
+          return {
+            apis,
+            knopf: label,
+            overlay: ueberlagert(node),
+            auszug: txt.replace(/\s+/g, " ").trim().slice(0, 160),
+          };
+        }
+      }
+      return { apis, knopf: null as string | null, overlay: false, auszug: "" };
+    };
+
+    const consentTreffer = await Promise.all(
+      page.frames().map((frame) =>
+        frame.evaluate(erkenneConsent).catch((err: Error) => {
+          // Frames verschwinden mitten im Scan (Werbe-iframes) — das ist normal
+          // und keine Meldung wert. Alles andere schon: ein stiller catch an
+          // dieser Stelle hat die Erkennung bereits einmal unbemerkt ausgehebelt.
+          if (!/detached|destroyed|Execution context|navigation/i.test(err.message)) {
+            console.warn(`Consent-Erkennung in ${frame.url().slice(0, 80)} fehlgeschlagen: ${err.message}`);
+          }
+          return null;
+        })
+      )
+    );
+    const bannerTreffer = consentTreffer.find((t) => t?.knopf) ?? null;
+    const consentDom = {
+      apis: [...new Set(consentTreffer.flatMap((t) => t?.apis ?? []))],
+      knopf: bannerTreffer?.knopf ?? null,
+      overlay: bannerTreffer?.overlay ?? false,
+      auszug: bannerTreffer?.auszug ?? "",
+    };
+
+    const cmpName = cmp?.name || consentDom.apis[0] || null;
+
+    // Kopplung an die Realität: Ein Einwilligungs-Banner ist kein Selbstzweck.
+    // § 25 TDDDG verlangt die Einwilligung für nicht-notwendige Speicherung und
+    // Zugriff — wer weder Tracker lädt noch nicht-essenzielle Cookies setzt,
+    // braucht keinen Banner und darf dafür auch nicht abgewertet werden.
+    const einwilligungspflichtig = hits.size > 0 || nonEssential.length > 0;
+
+    const bannerEvidenz = consentDom.knopf
+      ? [
+          `Knopf: „${consentDom.knopf}"`,
+          consentDom.overlay ? "liegt als Overlay über dem Inhalt" : "im Seitenfluss, kein Overlay",
+          consentDom.auszug && `Text: „${consentDom.auszug}…"`,
+        ].filter(Boolean) as string[]
+      : undefined;
+
+    const consentEvidenz = [
+      ...(consentDom.apis.length ? [`Aktive Schnittstelle im Browser: ${consentDom.apis.join(", ")}`] : []),
+      ...(bannerEvidenz ?? []),
+    ];
+
+    if ((cmpName || consentDom.knopf) && einwilligungspflichtig) {
+      // Die Einwilligung wird eingeholt, greift aber zu spät: es lief schon
+      // etwas, bevor jemand zustimmen konnte. Bewusst nur "low" — der
+      // eigentliche Verstoß wird als eigenes Finding (Tracker/Cookies) voll
+      // bestraft; hier steht nur, dass das vorhandene Tool ihn nicht verhindert.
+      findings.push({
+        id: "dsgvo.banner-ineffective",
+        category: "dsgvo",
+        title: cmpName
+          ? `Consent-Tool erkannt (${cmpName}), es greift aber zu spät`
+          : "Cookie-Banner vorhanden, wirkt aber nicht",
+        status: "warn",
+        severity: "low",
+        description:
+          "Eine Einwilligung wird eingeholt, trotzdem wurden schon vor jeder Zustimmung Tracker geladen oder nicht-essenzielle Cookies gesetzt. Abgefragt wird damit, was ohnehin bereits passiert ist.",
+        recommendation:
+          "Skripte und Cookies erst nach aktiver Einwilligung ausführen (Blockade vorschalten, nicht nur den Hinweis anzeigen).",
+        legalRef: "§ 25 TDDDG, Art. 6 Abs. 1 DSGVO",
+        evidence: consentEvidenz.length ? consentEvidenz : undefined,
+      });
+    } else if (cmpName) {
       findings.push({
         id: "dsgvo.cmp-present",
         category: "dsgvo",
-        title: `Consent-Tool erkannt: ${cmp.name}`,
+        title: `Consent-Tool erkannt: ${cmpName}`,
         status: "pass",
         severity: "info",
-        description: "Ein Consent-Management-Tool ist im Einsatz (korrekte Konfiguration vorausgesetzt).",
+        description:
+          "Ein Consent-Management-Tool ist im Einsatz, und vor der Zustimmung wurden weder Tracker geladen noch nicht-essenzielle Cookies gesetzt.",
+        evidence: consentEvidenz.length ? consentEvidenz : undefined,
       });
-    } else if (looksLikeBanner) {
+    } else if (consentDom.knopf) {
       findings.push({
-        id: "dsgvo.banner-heuristic",
+        id: "dsgvo.banner-present",
         category: "dsgvo",
-        title: "Cookie-Banner vermutlich vorhanden",
-        status: "warn",
-        severity: "low",
-        description: "Es deutet ein Cookie-Hinweis hin, aber kein bekanntes Consent-Tool wurde erkannt.",
-        recommendation: "Sicherstellen, dass der Banner Opt-in erzwingt und 'Ablehnen' gleichwertig anbietet.",
+        title: "Cookie-Banner vorhanden",
+        status: "pass",
+        severity: "info",
+        description:
+          "Ein sichtbares Einwilligungs-Banner wurde gefunden, und vor der Zustimmung wurden weder Tracker geladen noch nicht-essenzielle Cookies gesetzt.",
+        evidence: bannerEvidenz,
       });
-    } else {
+    } else if (einwilligungspflichtig) {
       findings.push({
         id: "dsgvo.no-banner",
         category: "dsgvo",
-        title: "Kein Cookie-Banner erkannt",
-        status: "warn",
-        severity: "medium",
-        description: "Es wurde kein Einwilligungs-Banner gefunden. Bei Einsatz von Tracking ist das ein Problem.",
-        recommendation: "DSGVO-konformes Consent-Banner mit Opt-in einbinden.",
+        title: "Kein Cookie-Banner, obwohl einwilligungspflichtige Dienste laden",
+        status: "fail",
+        severity: "high",
+        description:
+          "Es wurde kein Einwilligungs-Banner gefunden, gleichzeitig laufen Tracker oder es werden nicht-essenzielle Cookies gesetzt. Für beides ist eine vorherige Einwilligung erforderlich.",
+        recommendation: "Consent-Banner mit echtem Opt-in einbinden und alle nicht notwendigen Dienste bis zur Zustimmung blockieren.",
+        legalRef: "§ 25 Abs. 1 TDDDG",
+      });
+    } else {
+      findings.push({
+        id: "dsgvo.no-banner-needed",
+        category: "dsgvo",
+        title: "Kein Einwilligungs-Banner nötig",
+        status: "pass",
+        severity: "info",
+        description:
+          "Die Seite lädt keine Tracker und setzt keine nicht-essenziellen Cookies. Ohne einwilligungspflichtige Verarbeitung ist ein Cookie-Banner nicht erforderlich — § 25 TDDDG greift dann nicht.",
       });
     }
 

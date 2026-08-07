@@ -56,6 +56,12 @@ export const CMP_SIGNATURES: { id: string; name: string; patterns: string[] }[] 
   { id: "onetrust", name: "OneTrust", patterns: ["cdn.cookielaw.org", "onetrust.com"] },
   { id: "cookieyes", name: "CookieYes", patterns: ["cookie-script.com", "cookieyes.com"] },
   { id: "complianz", name: "Complianz", patterns: ["complianz"] },
+  // Sourcepoint steckt hinter vielen großen deutschen Verlagsseiten und rendert
+  // sein Banner in einem eigenen iframe (cmp.<domain>, privacy-mgmt.com).
+  { id: "sourcepoint", name: "Sourcepoint", patterns: ["privacy-mgmt.com", "sourcepoint.mgr.consensu.org", "_sp_"] },
+  { id: "didomi", name: "Didomi", patterns: ["didomi.io", "privacy-center.org"] },
+  { id: "iubenda", name: "iubenda", patterns: ["iubenda.com"] },
+  { id: "consentmanager", name: "consentmanager", patterns: ["consentmanager.net", "delivery.consentmanager.net"] },
 ];
 
 // Hilfsfunktion: matcht eine URL/Host gegen eine Pattern-Liste.
