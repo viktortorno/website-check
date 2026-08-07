@@ -56,7 +56,7 @@ export const CATEGORY_WEIGHTS: Record<Category, number> = {
 // sich, ohne dass sich an einer Website etwas geändert hätte. Beim Erweitern
 // eines Moduls diese Zahl mitziehen.
 const CATEGORY_CHECK_TARGET: Record<Category, number> = {
-  dsgvo: 9,
+  dsgvo: 10,
   security: 17,
   "ai-act": 4,
   accessibility: 3,

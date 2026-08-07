@@ -111,6 +111,24 @@ export async function starteFixtureServer(opt: FixtureOptionen = {}): Promise<Fi
         return html("<!DOCTYPE html><html lang=de><body><h1>Seite nicht gefunden</h1>" +
           "<p>Die gewünschte Seite existiert leider nicht. Zurück zur Startseite.</p></body></html>");
 
+      // --- Cookie-Banner (Consent: Ablehnen so leicht wie Akzeptieren?) ---
+      case "/banner-mit-ablehnen":
+        return html(`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Shop</title></head>
+<body><h1>Willkommen</h1><p>Inhalt der Seite.</p>
+          <div style="position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #ccc;padding:20px;z-index:9999;min-height:80px">
+            <p>Wir verwenden Cookies und Tracking, um dir das beste Erlebnis zu bieten.</p>
+            <button style="padding:12px 24px">Alle akzeptieren</button>
+            <button style="padding:12px 24px">Alle ablehnen</button>
+          </div></body></html>`);
+      case "/banner-ohne-ablehnen":
+        return html(`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Shop</title></head>
+<body><h1>Willkommen</h1><p>Inhalt der Seite.</p>
+          <div style="position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #ccc;padding:20px;z-index:9999;min-height:80px">
+            <p>Wir verwenden Cookies und Tracking, um dir das beste Erlebnis zu bieten.</p>
+            <button style="padding:12px 24px">Alle akzeptieren</button>
+            <button style="padding:12px 24px">Einstellungen</button>
+          </div></body></html>`);
+
       // --- Header-Fälle (security) ---------------------------------------
       case "/hsts-aus":
         return html(START_HTML, { "strict-transport-security": "max-age=0" });

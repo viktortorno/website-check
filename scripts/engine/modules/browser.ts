@@ -481,6 +481,15 @@ export async function runBrowserScan(url: string): Promise<BrowserScanResult> {
         return false;
       };
 
+      // Beschriftungen, mit denen ABGELEHNT wird. Nach BGH „Cookie-Einwilligung
+      // II" und den EDSA-Leitlinien muss Ablehnen genauso leicht sein wie
+      // Zustimmen — idealerweise ein gleichwertiger Knopf auf derselben Ebene.
+      // "Nur notwendige/essenziell" zählt als Ablehnung des Trackings.
+      // Bewusst OHNE "Einstellungen"/"Mehr Optionen"/"Manage choices": Die
+      // führen auf eine ZWEITE Ebene und sind gerade KEIN gleichwertiges
+      // Ablehnen — genau der Fall, den dieser Check aufdecken soll.
+      const ABLEHN = /^(alle\s+)?(cookies?\s+)?(ablehnen|ablehnung|verweigern|nicht\s+(zustimmen|akzeptieren)|nur\s+(notwendige|essen[zt]ielle?|technisch\s+notwendige|erforderliche)|essen[zt]ielle?\s+(cookies?)?|weiter\s+ohne|reject|decline|deny|refuse|necessary\s+only|only\s+necessary|continue\s+without)/i;
+
       const klickbar = document.querySelectorAll<HTMLElement>(
         'button, a, [role="button"], input[type="button"], input[type="submit"]'
       );
@@ -498,15 +507,31 @@ export async function runBrowserScan(url: string): Promise<BrowserScanResult> {
           const txt = ((node as HTMLElement).innerText || "").slice(0, 3000);
           if (!THEMA.test(txt)) continue;
           if (!sichtbar(node)) break;
+
+          // Im SELBEN Banner-Kasten nach einem sichtbaren, gleichwertigen
+          // Ablehn-Knopf suchen. Fehlt er, ist nur „Akzeptieren" auf der ersten
+          // Ebene angeboten — der häufigste Dark-Pattern-Verstoß.
+          let ablehnKnopf: string | null = null;
+          const imKasten = (node as HTMLElement).querySelectorAll<HTMLElement>(
+            'button, a, [role="button"], input[type="button"], input[type="submit"]'
+          );
+          for (const b of imKasten) {
+            const l = (
+              b.innerText || (b as HTMLInputElement).value || b.getAttribute("aria-label") || ""
+            ).trim().replace(/\s+/g, " ");
+            if (l && l.length <= 40 && ABLEHN.test(l) && sichtbar(b)) { ablehnKnopf = l; break; }
+          }
+
           return {
             apis,
             knopf: label,
+            ablehnKnopf,
             overlay: ueberlagert(node),
             auszug: txt.replace(/\s+/g, " ").trim().slice(0, 160),
           };
         }
       }
-      return { apis, knopf: null as string | null, overlay: false, auszug: "" };
+      return { apis, knopf: null as string | null, ablehnKnopf: null as string | null, overlay: false, auszug: "" };
     };
 
     const consentTreffer = await Promise.all(
@@ -526,6 +551,7 @@ export async function runBrowserScan(url: string): Promise<BrowserScanResult> {
     const consentDom = {
       apis: [...new Set(consentTreffer.flatMap((t) => t?.apis ?? []))],
       knopf: bannerTreffer?.knopf ?? null,
+      ablehnKnopf: bannerTreffer?.ablehnKnopf ?? null,
       overlay: bannerTreffer?.overlay ?? false,
       auszug: bannerTreffer?.auszug ?? "",
     };
@@ -614,6 +640,45 @@ export async function runBrowserScan(url: string): Promise<BrowserScanResult> {
         severity: "info",
         description:
           "Die Seite lädt keine Tracker und setzt keine nicht-essenziellen Cookies. Ohne einwilligungspflichtige Verarbeitung ist ein Cookie-Banner nicht erforderlich — § 25 TDDDG greift dann nicht.",
+      });
+    }
+
+    // --- 3b. Ablehnen genauso leicht wie Akzeptieren? ---
+    //
+    // Nur auswertbar, wenn ein sichtbarer Banner MIT Akzeptier-Knopf gefunden
+    // wurde — dann lässt sich sagen, ob im selben Kasten auch abgelehnt werden
+    // kann. Fehlt der Ablehn-Knopf auf der ersten Ebene, ist die Einwilligung
+    // nicht freiwillig im Rechtssinn: Wer nur mit einem Klick zustimmen, aber
+    // nicht ebenso einfach ablehnen kann, wird zur Zustimmung gedrängt.
+    //
+    // Ehrliche Grenze: Wir sehen nur die erste Ebene. Liegt „Ablehnen" hinter
+    // „Einstellungen", erkennen wir es bewusst NICHT als gleichwertig — genau
+    // das ist der Punkt. Umgekehrt kann eine ungewöhnliche Beschriftung einen
+    // echten Ablehn-Knopf verstecken; deshalb „medium", nicht „high".
+    if (consentDom.knopf && !consentDom.ablehnKnopf) {
+      findings.push({
+        id: "dsgvo.consent-no-reject",
+        category: "dsgvo",
+        title: "Cookie-Banner ohne gleichwertiges „Ablehnen“",
+        status: "fail",
+        severity: "medium",
+        description:
+          "Der Banner bietet auf der ersten Ebene einen Zustimmungs-Knopf, aber keinen ebenso einfachen Weg, alles abzulehnen (nur „Akzeptieren“, Ablehnen allenfalls über „Einstellungen“). Eine Einwilligung ist nur dann freiwillig, wenn Ablehnen genauso leicht ist wie Zustimmen — sonst ist sie unwirksam.",
+        recommendation:
+          "Auf der ersten Bannerebene einen gleichwertigen Knopf „Alle ablehnen“ (oder „Nur notwendige“) neben „Akzeptieren“ anbieten — gleiche Größe, gleiche Sichtbarkeit.",
+        legalRef: "Art. 4 Nr. 11, Art. 7 DSGVO (Freiwilligkeit); EDSA-Leitlinien 03/2022 zu irreführenden Gestaltungsmustern; Orientierungshilfe der Aufsichtsbehörden (DSK)",
+        evidence: consentDom.knopf ? [`Zustimmen: „${consentDom.knopf}"`, "Kein gleichwertiger Ablehnen-Knopf auf der ersten Ebene erkannt"] : undefined,
+      });
+    } else if (consentDom.knopf && consentDom.ablehnKnopf) {
+      findings.push({
+        id: "dsgvo.consent-reject-ok",
+        category: "dsgvo",
+        title: "Ablehnen genauso leicht wie Akzeptieren",
+        status: "pass",
+        severity: "info",
+        description:
+          "Der Banner bietet auf der ersten Ebene sowohl einen Zustimmungs- als auch einen gleichwertigen Ablehnungs-Knopf — Voraussetzung für eine freiwillige Einwilligung.",
+        evidence: [`Zustimmen: „${consentDom.knopf}"`, `Ablehnen: „${consentDom.ablehnKnopf}"`],
       });
     }
 
