@@ -2,6 +2,7 @@
 // Browser-, Security- und DNS-Scan laufen parallel (unabhängig),
 // das Content-Modul nutzt anschließend das HTML aus dem Browser-Scan.
 
+import { randomUUID } from "node:crypto";
 import { ScanReport } from "./types";
 import { runSecurity } from "./modules/security";
 import { runDns } from "./modules/dns";
@@ -14,6 +15,9 @@ import { runPerformance } from "./modules/performance";
 import { runAccessibility } from "./modules/accessibility";
 import { runDomain } from "./modules/domain";
 import { runTechStack } from "./modules/techstack";
+import { runLegalPages } from "./modules/legalpages";
+import { runPrivacy } from "./modules/privacy";
+import { runAiAct } from "./modules/aiact";
 import { buildScores } from "./scoring";
 import { assertPublicHost } from "./ssrf";
 
@@ -61,16 +65,23 @@ export async function runScan(rawUrl: string): Promise<ScanReport> {
     runDomain(hostname),
   ]);
 
-  // Module, die auf dem bereits geladenen HTML arbeiten.
-  // GEO ruft zusätzlich robots.txt / llms.txt / sitemap.xml ab (async) und
-  // läuft daher parallel zu den synchronen HTML-Auswertungen.
+  // Module, die allein auf dem bereits geladenen HTML/den Rohdaten arbeiten.
   const contentFindings = runContent(browserResult.html, browserResult.finalUrl, browserResult.axeRan);
-  const seoFindings = runSeo(browserResult.html, browserResult.finalUrl);
   const psychologyFindings = runPsychology(browserResult.html);
   const performanceFindings = runPerformance(browserResult.perf);
   const accessibilityFindings = runAccessibility(browserResult.axeViolations, browserResult.axeRan);
   const techStackFindings = runTechStack(browserResult.html);
-  const geoFindings = await runGeo(browserResult.html, browserResult.finalUrl);
+  const privacyFindings = runPrivacy(browserResult.html, browserResult.requestUrls, browserResult.cookies);
+
+  // Module, die zusätzlich nachladen: GEO (robots/llms/sitemap, Rohabruf,
+  // Bot-Proben), legalpages (Impressum + Datenschutz), SEO (Soft-404-Probe,
+  // zweite Host-Variante, og:image) und AI Act (Bild-Herkunftsdaten).
+  const [geoFindings, legalFindings, seoFindings, aiActFindings] = await Promise.all([
+    runGeo(browserResult.html, browserResult.finalUrl),
+    runLegalPages(browserResult.html, browserResult.finalUrl),
+    runSeo(browserResult.html, browserResult.finalUrl, browserResult.mobil),
+    runAiAct(browserResult.html, browserResult.finalUrl, browserResult.requestUrls),
+  ]);
 
   const allFindings = [
     ...browserResult.findings,
@@ -78,17 +89,24 @@ export async function runScan(rawUrl: string): Promise<ScanReport> {
     ...dnsFindings,
     ...domainFindings,
     ...contentFindings,
+    ...legalFindings,
     ...seoFindings,
     ...geoFindings,
     ...psychologyFindings,
     ...performanceFindings,
     ...accessibilityFindings,
     ...techStackFindings,
+    ...privacyFindings,
+    ...aiActFindings,
   ];
 
   const { categories, overallScore, overallGrade } = buildScores(allFindings);
 
   const report: ScanReport = {
+    // Die App vergibt hier die Permalink-Kennung. Das CLI kennt keine
+    // Permalinks, hält den Typ aber identisch, damit Engine-Dateien zwischen
+    // beiden Projekten ohne Anpassung kopierbar bleiben.
+    id: randomUUID(),
     url,
     finalUrl: browserResult.finalUrl,
     scannedAt: new Date().toISOString(),

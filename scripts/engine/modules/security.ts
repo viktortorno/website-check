@@ -3,6 +3,7 @@
 
 import tls from "node:tls";
 import { Finding } from "../types";
+import { safeFetch } from "../ssrf";
 
 // --- Security-Header, die wir erwarten ---
 // name → [Anzeigename, Schweregrad wenn fehlt, Empfehlung]
@@ -183,10 +184,11 @@ export async function runSecurity(finalUrl: string): Promise<Finding[]> {
   }
 
   // 2. Security-Header der finalen Antwort prüfen.
+  // safeFetch statt redirect: "follow" — jeder Redirect-Hop wird erneut gegen
+  // interne IPs geprüft (sonst SSRF per 30x auf 127.0.0.1 / Metadaten-Dienst).
   let headers: Headers | null = null;
   try {
-    const res = await fetch(finalUrl, {
-      redirect: "follow",
+    const res = await safeFetch(finalUrl, {
       signal: AbortSignal.timeout(15000),
       headers: { "User-Agent": "Mozilla/5.0 ComplianceChecker/1.0" },
     });

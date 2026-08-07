@@ -14,6 +14,36 @@ async function txt(host: string): Promise<string[]> {
   }
 }
 
+// Zweistufige öffentliche Suffixe, bei denen erst die dritte Ebene eine
+// registrierbare (Organisations-)Domain ist — z.B. "firma.co.uk", nicht "co.uk".
+// Keine vollständige Public-Suffix-Liste, sondern die gängigsten Fälle: ohne
+// diese Liste würde die Domain-Suche bei "firma.co.uk" fälschlich bei "co.uk"
+// aufhören und dort DMARC nachschlagen, statt beim eigentlichen Betreiber.
+export const TWO_LABEL_PUBLIC_SUFFIXES = new Set([
+  "co.uk", "org.uk", "ac.uk", "gov.uk", "me.uk", "ltd.uk", "plc.uk",
+  "com.au", "net.au", "org.au", "co.nz", "co.jp", "co.za", "co.il", "co.in",
+  "com.br", "com.mx", "com.tr",
+]);
+
+// DMARC gilt auch dann für eine Subdomain, wenn nur die ORGANISATIONSDOMAIN
+// einen _dmarc-Record trägt (RFC 7489, "Organizational Domain"). Ohne diese
+// Vererbung meldet der Scan bei jeder Subdomain fälschlich "kein DMARC" —
+// selbst wenn die Hauptdomain sauber konfiguriert ist.
+//
+// Läuft von der vollen Domain nach oben und bricht ab, sobald die
+// registrierbare Domain erreicht ist (kein Aufstieg bis zur reinen TLD).
+export async function findDmarc(domain: string): Promise<{ record: string; domain: string } | null> {
+  const labels = domain.split(".");
+  for (let i = 0; i <= labels.length - 2; i++) {
+    const candidate = labels.slice(i).join(".");
+    const remaining = labels.length - i;
+    if (remaining === 2 && TWO_LABEL_PUBLIC_SUFFIXES.has(candidate)) continue; // Suffix selbst, keine echte Domain
+    const rec = (await txt(`_dmarc.${candidate}`)).find((r) => r.toLowerCase().startsWith("v=dmarc1"));
+    if (rec) return { record: rec, domain: candidate };
+  }
+  return null;
+}
+
 export async function runDns(hostname: string): Promise<Finding[]> {
   const findings: Finding[] = [];
   // www. abstreifen — Mail-Records hängen an der Hauptdomain.
@@ -43,12 +73,12 @@ export async function runDns(hostname: string): Promise<Finding[]> {
     });
   }
 
-  // --- DMARC ---
-  const dmarc = (await txt(`_dmarc.${domain}`)).find((r) =>
-    r.toLowerCase().startsWith("v=dmarc1")
-  );
-  if (dmarc) {
-    const policy = /p=(none|quarantine|reject)/i.exec(dmarc)?.[1]?.toLowerCase();
+  // --- DMARC (mit Vererbung von der Organisationsdomain) ---
+  const found = await findDmarc(domain);
+  if (found) {
+    const policy = /p=(none|quarantine|reject)/i.exec(found.record)?.[1]?.toLowerCase();
+    const onOrgDomain = found.domain !== domain;
+    const viaNote = onOrgDomain ? ` (geerbt von der Organisationsdomain ${found.domain})` : "";
     if (policy === "none") {
       findings.push({
         id: "security.dmarc-monitor",
@@ -56,7 +86,7 @@ export async function runDns(hostname: string): Promise<Finding[]> {
         title: "DMARC nur im Monitoring-Modus (p=none)",
         status: "warn",
         severity: "low",
-        description: "DMARC ist gesetzt, aber ohne Schutzwirkung (p=none).",
+        description: `DMARC ist gesetzt${viaNote}, aber ohne Schutzwirkung (p=none).`,
         recommendation: "Schrittweise auf p=quarantine bzw. p=reject erhöhen.",
       });
     } else {
@@ -66,7 +96,7 @@ export async function runDns(hostname: string): Promise<Finding[]> {
         title: `DMARC aktiv (p=${policy})`,
         status: "pass",
         severity: "info",
-        description: "DMARC schützt aktiv vor Spoofing.",
+        description: `DMARC schützt aktiv vor Spoofing${viaNote}.`,
       });
     }
   } else {
@@ -76,7 +106,7 @@ export async function runDns(hostname: string): Promise<Finding[]> {
       title: "Kein DMARC-Record",
       status: "warn",
       severity: "medium",
-      description: "Ohne DMARC fehlt die Durchsetzung von SPF/DKIM.",
+      description: "Weder für diese Domain noch für die übergeordnete Organisationsdomain wurde ein DMARC-Record gefunden.",
       recommendation: "DMARC-TXT-Record unter _dmarc.<domain> anlegen.",
     });
   }

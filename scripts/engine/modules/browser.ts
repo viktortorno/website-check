@@ -11,6 +11,7 @@ import { chromium, Browser } from "playwright";
 import axeCore from "axe-core";
 import { Finding } from "../types";
 import { TRACKERS, CMP_SIGNATURES, matchesAny } from "../trackers";
+import { assertPublicUrl } from "../ssrf";
 
 // Roh-Performance-Metriken aus dem Browser (werden in performance.ts bewertet).
 export interface PerfMetrics {
@@ -34,16 +35,58 @@ export interface AxeViolation {
   nodes: number;
 }
 
+// Messwerte aus einer zweiten Betrachtung bei Telefonbreite (390 px).
+// Bewusst gemessen statt aus dem HTML geraten: ob eine Seite seitlich
+// überläuft, steht in keinem Tag — das ergibt sich erst aus dem Layout.
+export interface MobilMetriken {
+  viewportBreite: number;
+  inhaltsBreite: number;      // scrollWidth des Dokuments
+  // Der eigentliche Beweis: Lässt sich das Fenster tatsächlich seitlich
+  // schieben? scrollWidth allein genügt nicht — Elemente in einem Container
+  // mit overflow:hidden ragen zwar hinaus, scrollen aber nichts.
+  scrolltSeitlich: boolean;
+  scrollWeite: number;        // wie viele Pixel tatsächlich verschiebbar sind
+  ueberlaeufer: string[];     // Elemente, die über den Rand hinausragen
+  kleineZiele: number;        // interaktive Elemente unter 40 px Kantenlänge
+  zieleGesamt: number;
+}
+
 export interface BrowserScanResult {
   findings: Finding[];
   html: string;
   finalUrl: string;
   title: string;
+  mobil: MobilMetriken | null;
   // Roh-Daten, die nachgelagerte Module weiterverwenden:
   requestHosts: string[];
+  requestUrls: string[];
+  // Cookies, die OHNE jede Interaktion gesetzt wurden (Name/Domain/Laufzeit).
+  cookies: { name: string; domain: string; expires: number }[];
   perf: PerfMetrics | null;
   axeViolations: AxeViolation[];
   axeRan: boolean; // false = axe konnte nicht laufen → Content-Heuristik als Fallback
+}
+
+// Start-Argumente für Chromium.
+//
+// Dieses Tool rendert fremde, potenziell feindliche Seiten. Die Chromium-Sandbox
+// ist damit die wichtigste einzelne Schutzschicht: Ohne sie bedeutet ein
+// Renderer-Exploit Codeausführung mit den Rechten des App-Prozesses.
+//
+// Chromium verweigert den Start als root, wenn die Sandbox aktiv ist — deshalb
+// stand hier früher pauschal --no-sandbox. Die Kombination "als root UND ohne
+// Sandbox" war der ungünstigste denkbare Fall. Jetzt läuft die App als eigener
+// Systemnutzer (siehe ecosystem.config.js) und die Sandbox bleibt an; nur wenn
+// jemand den Prozess doch wieder als root startet, fällt sie zurück — mit
+// deutlicher Warnung im Log statt eines stillen Startfehlers.
+function sandboxArgs(): string[] {
+  const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  if (!isRoot) return [];
+  console.warn(
+    "WARNUNG: Prozess läuft als root — Chromium startet ohne Sandbox. " +
+    "Die App sollte als eigener Systemnutzer laufen (pm2 start ecosystem.config.js)."
+  );
+  return ["--no-sandbox", "--disable-setuid-sandbox"];
 }
 
 export async function runBrowserScan(url: string): Promise<BrowserScanResult> {
@@ -54,7 +97,7 @@ export async function runBrowserScan(url: string): Promise<BrowserScanResult> {
   try {
     browser = await chromium.launch({
       headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      args: sandboxArgs(),
     });
     const context = await browser.newContext({
       userAgent:
@@ -65,6 +108,21 @@ export async function runBrowserScan(url: string): Promise<BrowserScanResult> {
 
     // Alle ausgehenden Requests mitschneiden.
     page.on("request", (req) => requestUrls.push(req.url()));
+
+    // SSRF-Schutz für den Browser: der Runner prüft nur den START-Host, danach
+    // könnte die Seite per 30x/JS ins interne Netz navigieren. Deshalb jede
+    // NAVIGATION (auch in iframes) erneut gegen die echte Ziel-IP prüfen.
+    // Sub-Requests (Bilder, Skripte) laufen ungeprüft durch — sie liefern der
+    // Auswertung keine Inhalte zurück und ein DNS-Lookup pro Request wäre teuer.
+    await page.route("**/*", async (route, req) => {
+      if (!req.isNavigationRequest()) return route.continue();
+      try {
+        await assertPublicUrl(req.url());
+        await route.continue();
+      } catch {
+        await route.abort("blockedbyclient");
+      }
+    });
 
     // Performance-Observer VOR dem Laden registrieren, damit LCP & CLS
     // (Core Web Vitals) vollständig erfasst werden.
@@ -94,7 +152,14 @@ export async function runBrowserScan(url: string): Promise<BrowserScanResult> {
     // Tracker feuern oft verzögert (per JS) → kurz warten.
     await page.waitForTimeout(4000);
 
+    // Zweite Verteidigungslinie: wo sind wir tatsächlich gelandet? Der Interceptor
+    // oben blockt Navigationen, diese Prüfung fängt zusätzlich den Fall ab, dass
+    // der Host zwischen Prüfung und Verbindung auf eine interne IP umgebogen wird
+    // (DNS-Rebinding). Läuft VOR page.content(), damit interne Inhalte gar nicht
+    // erst in den Report gelangen. Wirft → äußerer catch (Scan-Fehler-Finding).
     const finalUrl = page.url();
+    await assertPublicUrl(finalUrl);
+
     const html = await page.content();
     const title = await page.title();
 
@@ -474,6 +539,68 @@ export async function runBrowserScan(url: string): Promise<BrowserScanResult> {
       });
     }
 
+    // --- Mobile Darstellung bei 390 px messen ---
+    //
+    // Läuft ganz am Ende, weil die Viewport-Änderung das Layout umbaut: html,
+    // axe-Ergebnisse und Consent-Prüfung sind zu diesem Zeitpunkt schon
+    // erhoben. Google indexiert primär die mobile Fassung — ob eine Seite dort
+    // seitlich überläuft, steht in keinem Meta-Tag.
+    let mobil: MobilMetriken | null = null;
+    try {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.waitForTimeout(600);
+      mobil = await page.evaluate(() => {
+        const g = globalThis as unknown as Record<string, unknown>;
+        if (typeof g.__name !== "function") g.__name = (f: unknown) => f;
+
+        const breite = window.innerWidth;
+        const doc = document.documentElement;
+
+        // Erst messen, dann zurückstellen: der Versuch, ganz nach rechts zu
+        // scrollen, beantwortet die Frage eindeutig.
+        const vorher = window.scrollX;
+        window.scrollTo(99_999, window.scrollY);
+        const scrollWeite = Math.round(window.scrollX);
+        window.scrollTo(vorher, window.scrollY);
+        const ueberlaeufer: string[] = [];
+        for (const el of document.querySelectorAll<HTMLElement>("body *")) {
+          const r = el.getBoundingClientRect();
+          // Nur echte Überläufe: mehr als 4 px über den rechten Rand hinaus,
+          // und das Element muss selbst sichtbar sein.
+          if (r.width > 0 && r.right > breite + 4 && getComputedStyle(el).visibility !== "hidden") {
+            const name = el.tagName.toLowerCase()
+              + (el.id ? `#${el.id}` : "")
+              + (typeof el.className === "string" && el.className ? `.${el.className.trim().split(/\s+/)[0]}` : "");
+            if (!ueberlaeufer.includes(name)) ueberlaeufer.push(name);
+            if (ueberlaeufer.length >= 5) break;
+          }
+        }
+
+        const ziele = document.querySelectorAll<HTMLElement>(
+          'a[href], button, input:not([type="hidden"]), select, textarea, [role="button"]'
+        );
+        let klein = 0, gesamt = 0;
+        for (const z of ziele) {
+          const r = z.getBoundingClientRect();
+          if (r.width === 0 || r.height === 0) continue; // unsichtbar → zählt nicht
+          gesamt++;
+          if (r.width < 40 || r.height < 40) klein++;
+        }
+
+        return {
+          viewportBreite: breite,
+          inhaltsBreite: doc.scrollWidth,
+          scrolltSeitlich: scrollWeite > 4,
+          scrollWeite,
+          ueberlaeufer,
+          kleineZiele: klein,
+          zieleGesamt: gesamt,
+        };
+      });
+    } catch (err) {
+      console.warn(`Mobil-Messung fehlgeschlagen: ${(err as Error).message}`);
+    }
+
     // HTTP-Status der Hauptseite
     if (response && response.status() >= 400) {
       findings.push({
@@ -491,7 +618,10 @@ export async function runBrowserScan(url: string): Promise<BrowserScanResult> {
       html,
       finalUrl,
       title,
+      mobil,
       requestHosts: [...new Set(requestUrls.map((u) => { try { return new URL(u).host; } catch { return ""; } }).filter(Boolean))],
+      requestUrls: [...new Set(requestUrls)],
+      cookies: cookies.map((c) => ({ name: c.name, domain: c.domain, expires: c.expires })),
       perf,
       axeViolations,
       axeRan,
@@ -505,7 +635,7 @@ export async function runBrowserScan(url: string): Promise<BrowserScanResult> {
       severity: "info",
       description: `Die Seite konnte nicht vollständig im Browser geladen werden: ${(err as Error).message}`,
     });
-    return { findings, html: "", finalUrl: url, title: "", requestHosts: [], perf: null, axeViolations: [], axeRan: false };
+    return { findings, html: "", finalUrl: url, title: "", mobil: null, requestHosts: [], requestUrls: [], cookies: [], perf: null, axeViolations: [], axeRan: false };
   } finally {
     // Chromium IMMER schließen — auch bei Timeout/Abbruch, sonst verwaisen Prozesse.
     if (browser) await browser.close().catch(() => {});

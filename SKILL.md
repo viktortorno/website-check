@@ -50,19 +50,35 @@ npx tsx scripts/scan.ts <url> --json
 
 Ein Scan startet kurz Chromium und dauert ~5–20 Sekunden.
 
-## Was geprüft wird (8 Bereiche)
+## Was geprüft wird (8 Bereiche, rund 67 Prüfpunkte)
 
 **Rechtssicherheit & Risiko**
-1. **DSGVO** — Pre-Consent-Tracking, Cookies ohne Einwilligung, Google Fonts, CMP, Impressum, Datenschutzerklärung
-2. **IT-Sicherheit** — Security-Header, HTTPS/HSTS, TLS-Zertifikat, Mixed Content, Cookie-Flags, CSP-Qualität, Technologie-Stack (veraltete Libs), Domain-Ablauf (RDAP)
-3. **EU AI Act** — Chatbot-/KI-Transparenzpflicht (Art. 50)
+1. **DSGVO** — Tracker und Cookies vor der Einwilligung, Cookie-Laufzeiten über 12 Monate,
+   Consent-Banner (im DOM erkannt, über alle Frames), fremde Einbettungen die ungefragt laden
+   (YouTube, Maps, reCAPTCHA, CDNs, Newsletter), Google Fonts, Formular ohne Datenschutzhinweis,
+   Impressum und Datenschutzerklärung inhaltlich auf Pflichtangaben
+2. **IT-Sicherheit** — Security-Header, HTTPS/HSTS, TLS-Zertifikat, Mixed Content, Cookie-Flags,
+   CSP-Qualität, Technologie-Stack (veraltete Libs), Domain-Ablauf (RDAP), SPF/DMARC/DKIM
+3. **EU AI Act** — Herkunftsspuren in Bildern (C2PA/Content Credentials, IPTC
+   `trainedAlgorithmicMedia`, Generator-Speicherorte), eingebundene KI-Dienste,
+   Biometrie-/Emotionsbibliotheken (Art. 5), Chatbot-Transparenz (Art. 50)
 4. **Barrierefreiheit (BFSG)** — echte WCAG-2.1-Prüfung via axe-core (Level A/AA)
 
 **Sichtbarkeit & Conversion**
-5. **SEO** — Title, Meta-Description, H1, Canonical, Indexierbarkeit, Open Graph, strukturierte Daten
-6. **GEO / KI-Suche** — KI-Crawler-Zugang (robots.txt), llms.txt, Sitemap, Frage-Antwort-Struktur, Entitäts-Schema, E-E-A-T
+5. **SEO** — Title, Description, H1, Überschriften-Hierarchie, Canonical, Indexierbarkeit,
+   Open Graph inkl. erreichbarem og:image, strukturierte Daten, Breadcrumbs, Sprachauszeichnung,
+   Bild-Alt/Maße/Format, Linktexte, Textmenge, Soft-404-Probe, www/non-www-Dublette,
+   **mobile Darstellung bei 390 px im echten Browser gemessen** (Überlauf, Tap-Targets)
+6. **GEO / KI-Suche** — **Sichtbarkeit ohne JavaScript** (Quelltext gegen gerendertes DOM),
+   **serverseitige Bot-Sperren** (Testabruf als GPTBot/PerplexityBot), KI-Crawler-Zugang in der
+   robots.txt, llms.txt, Sitemap, Frage-Antwort-Struktur, zitierfähige Absätze, Faktendichte,
+   Definitionssätze, Entitäts-Schema mit sameAs, Aktualität, ausgehende Quellen
 7. **Performance** — Core Web Vitals (LCP, CLS, TTFB), Seitengewicht, Requests, DOM-Größe
-8. **Psychologie / Conversion** — Call-to-Action, Nutzenversprechen, Social Proof, Vertrauenssignale, Kontaktwege, Lead-Magnet
+8. **Psychologie / Conversion** — Call-to-Action, Nutzenversprechen, Social Proof,
+   Vertrauenssignale, Kontaktwege, Lead-Magnet
+
+Jede Kategorie nennt im Report ihren Geltungsbereich — was sie abdeckt **und was nicht**
+(keine AV-Verträge, keine Rankings, ein Drittel der WCAG-Kriterien, ein Messpunkt).
 
 ## Wie du das Ergebnis aufbereitest
 

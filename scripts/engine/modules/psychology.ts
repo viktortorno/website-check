@@ -28,6 +28,12 @@ const CTA_PHRASES = [
   "loslegen", "starten", "anmelden", "registrieren", "demo", "angebot",
   "beratung", "mehr erfahren", "herunterladen", "kaufen", "bestellen",
   "gespräch", "call", "get started", "sign up", "book", "request",
+  // Ergänzt nach Selbsttest: ein Tool wie dieses hat den Button "Prüfen",
+  // nicht "Jetzt kaufen" — die ursprüngliche Liste war auf klassische
+  // Verkaufsseiten zugeschnitten und ließ App-/Formular-CTAs durchfallen.
+  "prüfen", "testen", "analysieren", "berechnen", "absenden", "abschicken",
+  "senden", "vereinbaren", "reservieren", "download", "ausprobieren",
+  "scan", "check",
 ];
 
 const SOCIAL_PROOF = [
