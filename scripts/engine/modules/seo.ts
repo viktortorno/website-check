@@ -12,6 +12,66 @@ import { Finding } from "../types";
 import { assertPublicUrl, leseBegrenzt } from "../ssrf";
 import type { MobilMetriken } from "./browser";
 
+// Bildformat-Bilanz einer Seite: wie viele <img> werden in einem modernen
+// Format (WebP/AVIF) ausgeliefert, wie viele nicht?
+//
+// Der frühere Check hatte ein Loch: Er erklärte die GANZE Seite für „modern",
+// sobald irgendwo ein einziges .webp vorkam — ein WebP-Logo ließ zwanzig
+// JPEG-Fotos durchgehen. Diese Analyse betrachtet jedes Bild einzeln.
+//
+// Ein Bild gilt als modern ausgeliefert, wenn:
+//   - sein src auf .webp/.avif endet, ODER
+//   - sein srcset ein .webp/.avif enthält, ODER
+//   - es in einem <picture> steckt, das ein <source> mit WebP/AVIF anbietet
+//     (dann lädt der Browser das moderne Format, das <img src=jpg> ist nur
+//     Rückfallebene — kein Mangel).
+//
+// Ehrliche Grenzen: CSS-background-image erfasst ein <img>-Scan nicht; Bilder
+// ohne erkennbare Datei-Endung (dynamische URLs wie /bild?id=5) sind
+// formatmäßig nicht bestimmbar und werden nicht mitgezählt.
+export interface BildFormatBilanz {
+  gesamt: number;     // <img> mit bestimmbarem Rasterformat
+  modern: number;     // davon WebP/AVIF (direkt oder via <picture>/srcset)
+  alt: string[];      // src-URLs der nicht-modernen (JPEG/PNG/GIF), gekürzt
+}
+
+// Endung gefolgt von einem Trenner: Query (?), Fragment (#), Ende, ODER — für
+// srcset — Leerzeichen/Komma vor dem Deskriptor ("/a.webp 2x, /b.webp 3x").
+const MODERN_RE = /\.(webp|avif)(?=[\s?#,"']|$)/i;
+const RASTER_ALT_RE = /\.(jpe?g|png|gif)(?=[\s?#,"']|$)/i;
+
+export function analysiereBildformate(html: string): BildFormatBilanz {
+  // <picture>-Blöcke mit modernem <source> vormerken: Alle <img> darin gelten
+  // als modern ausgeliefert.
+  const modernePictures: string[] = [];
+  for (const m of html.matchAll(/<picture\b[^>]*>([\s\S]*?)<\/picture>/gi)) {
+    const inhalt = m[1];
+    const hatModernSource = /<source\b[^>]*type=["']image\/(webp|avif)["']/i.test(inhalt)
+      || [...inhalt.matchAll(/<source\b[^>]*(?:srcset|src)=["']([^"']+)["']/gi)].some((s) => MODERN_RE.test(s[1]));
+    if (hatModernSource) modernePictures.push(inhalt);
+  }
+  const inModernemPicture = (imgTag: string) => modernePictures.some((p) => p.includes(imgTag));
+
+  let gesamt = 0, modern = 0;
+  const alt: string[] = [];
+
+  for (const m of html.matchAll(/<img\b[^>]*>/gi)) {
+    const tag = m[0];
+    const src = /\ssrc=["']([^"']+)["']/i.exec(tag)?.[1] ?? "";
+    const srcset = /\ssrcset=["']([^"']+)["']/i.exec(tag)?.[1] ?? "";
+    if (/^data:/i.test(src)) continue; // Inline-Daten haben kein Dateiformat
+
+    const istModern = MODERN_RE.test(src) || MODERN_RE.test(srcset) || inModernemPicture(tag);
+    const istAlt = RASTER_ALT_RE.test(src) || RASTER_ALT_RE.test(srcset);
+
+    if (istModern) { gesamt++; modern++; }
+    else if (istAlt) { gesamt++; alt.push(src.split("/").pop() || src); }
+    // sonst: unbestimmbar (SVG, dynamische URL) → nicht mitzählen
+  }
+
+  return { gesamt, modern, alt: alt.slice(0, 8) };
+}
+
 // Hilfsfunktion: ersten Match einer Gruppe zurückgeben (oder null).
 function firstMatch(html: string, re: RegExp): string | null {
   const m = html.match(re);
@@ -171,10 +231,16 @@ export async function runSeo(html: string, finalUrl: string, mobil?: MobilMetrik
     if (ohneMasse.length > imgs.length / 2) {
       findings.push({ id: "seo.img-dimensions", category: "seo", title: `${ohneMasse.length} von ${imgs.length} Bildern ohne width/height`, status: "warn", severity: "low", description: "Ohne feste Maße kennt der Browser den Platzbedarf eines Bildes erst nach dem Laden — der Inhalt springt (Cumulative Layout Shift). CLS ist ein bestätigter Google-Ranking-Faktor.", recommendation: "width und height am <img> angeben (oder aspect-ratio per CSS), auch bei responsiven Bildern." });
     }
-    const altFormate = imgs.filter((t) => /\.(jpe?g|png)\b/i.test(t));
-    const modern = /\.(webp|avif)\b/i.test(html) || /<source[^>]+type=["']image\/(webp|avif)/i.test(html);
-    if (altFormate.length >= 3 && !modern) {
-      findings.push({ id: "seo.img-format", category: "seo", title: `${altFormate.length} Bilder in JPEG/PNG statt WebP/AVIF`, status: "warn", severity: "low", description: "Moderne Bildformate sind bei gleicher Qualität deutlich kleiner. Das verkürzt die Ladezeit — und Ladezeit fließt über die Core Web Vitals ins Ranking ein.", recommendation: "Bilder als WebP oder AVIF ausliefern, mit <picture> und JPEG/PNG als Rückfallebene." });
+  }
+
+  // ---------- 12b. Bildformate: jedes Bild einzeln (nicht pauschal) --------
+  const formatBilanz = analysiereBildformate(html);
+  if (formatBilanz.gesamt >= 3) {
+    if (formatBilanz.alt.length === 0) {
+      findings.push({ id: "seo.img-format-ok", category: "seo", title: "Alle Bilder in modernem Format", status: "pass", severity: "info", description: `Alle ${formatBilanz.gesamt} bestimmbaren Bilder werden als WebP oder AVIF ausgeliefert (direkt oder über <picture>).` });
+    } else {
+      const nichtModern = formatBilanz.gesamt - formatBilanz.modern;
+      findings.push({ id: "seo.img-format", category: "seo", title: `${nichtModern} von ${formatBilanz.gesamt} Bildern nicht als WebP/AVIF`, status: "warn", severity: "low", description: "Diese Bilder werden als JPEG/PNG/GIF ausgeliefert. Moderne Formate (WebP/AVIF) sind bei gleicher Qualität deutlich kleiner — das verkürzt die Ladezeit, die über die Core Web Vitals ins Ranking einfließt. Ein einzelnes WebP an anderer Stelle genügt nicht; entscheidend ist jedes Bild.", recommendation: "Die genannten Bilder als WebP/AVIF ausliefern, mit <picture> und JPEG/PNG als Rückfallebene.", evidence: formatBilanz.alt });
     }
   }
 
