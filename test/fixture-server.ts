@@ -74,6 +74,9 @@ export interface FixtureOptionen {
   // Eigener robots.txt-Inhalt. runGeo holt immer ${origin}/robots.txt — für
   // eine zweite Variante braucht es deshalb einen zweiten Server.
   robots?: string;
+  // Absolute Basis für ein Canonical-Ziel (nur /self-slash). Wird nach dem
+  // Start gesetzt, weil der Port erst dann feststeht.
+  basisFuerCanonical?: string;
 }
 
 export async function starteFixtureServer(opt: FixtureOptionen = {}): Promise<FixtureServer> {
@@ -117,6 +120,61 @@ export async function starteFixtureServer(opt: FixtureOptionen = {}): Promise<Fi
         return html(START_HTML, { "strict-transport-security": "max-age=31536000; includeSubDomains" });
       case "/server-leak":
         return html(START_HTML, { server: "Apache/2.4.29 (Ubuntu)" });
+
+      // --- Indexierung (canonical, X-Robots-Tag, hreflang) ---------------
+      // noindex nur im HTTP-Header, im Quelltext unsichtbar.
+      case "/x-robots-noindex":
+        return html(START_HTML, { "x-robots-tag": "noindex, nofollow" });
+
+      // Canonical-Schleife: A erklärt B für maßgeblich, B erklärt A.
+      case "/canon-a":
+        return html(`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
+          <link rel="canonical" href="/canon-b"><title>A</title></head><body><h1>A</h1></body></html>`);
+      case "/canon-b":
+        return html(`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
+          <link rel="canonical" href="/canon-a"><title>B</title></head><body><h1>B</h1></body></html>`);
+
+      // Canonical zeigt auf eine noindex-Seite.
+      case "/canon-nach-noindex":
+        return html(`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
+          <link rel="canonical" href="/ist-noindex"><title>x</title></head><body><h1>x</h1></body></html>`);
+      case "/ist-noindex":
+        return html(`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
+          <meta name="robots" content="noindex"><link rel="canonical" href="/ist-noindex"><title>y</title></head><body><h1>y</h1></body></html>`);
+
+      // Sauberer Cross-Canonical: Ziel bestätigt sich selbst, ist indexierbar.
+      case "/canon-nach-sauber":
+        return html(`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
+          <link rel="canonical" href="/sauberes-ziel"><title>x</title></head><body><h1>x</h1></body></html>`);
+      case "/sauberes-ziel":
+        return html(`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
+          <link rel="canonical" href="/sauberes-ziel"><title>Ziel</title></head><body><h1>Ziel</h1></body></html>`);
+
+      // hreflang ohne Selbstreferenz (der häufigste Fehler).
+      case "/hreflang-ohne-self":
+        return html(`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>x</title>
+          <link rel="alternate" hreflang="en" href="/en/">
+          <link rel="alternate" hreflang="fr" href="/fr/"></head><body><h1>x</h1></body></html>`);
+
+      // hreflang korrekt: Selbstreferenz + x-default, gültige Codes.
+      case "/hreflang-gut":
+        return html(`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>x</title>
+          <link rel="alternate" hreflang="de" href="/hreflang-gut">
+          <link rel="alternate" hreflang="en" href="/en/">
+          <link rel="alternate" hreflang="x-default" href="/"></head><body><h1>x</h1></body></html>`);
+
+      // Self-Canonical, das sich nur im trailing slash unterscheidet. Wird
+      // OHNE Slash aufgerufen, Canonical MIT Slash — beides dieselbe Seite.
+      // Ein naiver String-Vergleich würde hier fälschlich "zeigt woanders hin".
+      case "/self-slash":
+        return html(`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
+          <link rel="canonical" href="${opt.basisFuerCanonical ?? ""}/self-slash/"><title>x</title></head><body><h1>x</h1></body></html>`);
+
+      // hreflang mit ungültigem Code.
+      case "/hreflang-kaputt":
+        return html(`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>x</title>
+          <link rel="alternate" hreflang="deutsch" href="/hreflang-kaputt">
+          <link rel="alternate" hreflang="en" href="/en/"></head><body><h1>x</h1></body></html>`);
 
       // --- robots.txt-Varianten (geo) ------------------------------------
       case "/robots.txt":

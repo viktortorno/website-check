@@ -18,6 +18,7 @@ import { runTechStack } from "./modules/techstack";
 import { runLegalPages } from "./modules/legalpages";
 import { runPrivacy } from "./modules/privacy";
 import { runAiAct } from "./modules/aiact";
+import { runIndexierung } from "./modules/indexierung";
 import { buildScores } from "./scoring";
 import { KONTEXT_UNBEKANNT, kontextSchluessel, wendeGeltungAn } from "./kontext";
 import { erkenneSeitentyp, wendeSeitentypAn } from "./seitentyp";
@@ -83,11 +84,12 @@ export async function runScan(rawUrl: string, kontext: ScanKontext = KONTEXT_UNB
   // Module, die zusätzlich nachladen: GEO (robots/llms/sitemap, Rohabruf,
   // Bot-Proben), legalpages (Impressum + Datenschutz), SEO (Soft-404-Probe,
   // zweite Host-Variante, og:image) und AI Act (Bild-Herkunftsdaten).
-  const [geoFindings, legalFindings, seoFindings, aiActFindings] = await Promise.all([
+  const [geoFindings, legalFindings, seoFindings, aiActFindings, indexFindings] = await Promise.all([
     runGeo(browserResult.html, browserResult.finalUrl),
     runLegalPages(browserResult.html, browserResult.finalUrl),
     runSeo(browserResult.html, browserResult.finalUrl, browserResult.mobil),
     runAiAct(browserResult.html, browserResult.finalUrl, browserResult.requestUrls),
+    runIndexierung(browserResult.html, browserResult.finalUrl),
   ]);
 
   const allFindings = [
@@ -105,6 +107,7 @@ export async function runScan(rawUrl: string, kontext: ScanKontext = KONTEXT_UNB
     ...techStackFindings,
     ...privacyFindings,
     ...aiActFindings,
+    ...indexFindings,
   ];
 
   // Welche Kategorien wurden tatsächlich geprüft? Der Browser ist der

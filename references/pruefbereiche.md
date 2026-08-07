@@ -44,6 +44,14 @@ zählt halb). Gewichtung der Bereiche im Gesamtscore und alle Schwellen:
 - **H1** (genau eine), **Canonical**, **Indexierbarkeit** (`noindex`?).
 - **Open Graph** (og:title, og:image), **strukturierte Daten** (JSON-LD/Schema.org).
 - Bild-Alt-Texte, URL-Qualität.
+- **Indexierungs-Diagnose** (die unsichtbaren Fehler, die Rankings kosten):
+  - **X-Robots-Tag** im HTTP-Header — `noindex`, das im Quelltext nicht steht.
+  - **Widerspruch** zwischen Meta-robots und Header.
+  - **Canonical-Ziel**: erreichbar? indexierbar? Schleife (A↔B) oder Kette (A→B→C)?
+    Ein Canonical auf eine `noindex`-Seite verhindert, dass irgendeine der beiden rankt.
+  - **hreflang**: Selbstreferenz vorhanden (fehlt sie, verwirft Google das ganze Set),
+    gültige Sprachcodes, `x-default`. Volle Reziprozität bleibt dem Multi-Page-Crawl
+    vorbehalten — ein Ein-Seiten-Scan kann sie nicht prüfen.
 
 ## ✨ GEO / KI-Suche (Generative Engine Optimization)
 
